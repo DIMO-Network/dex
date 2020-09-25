@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -680,22 +681,21 @@ func (s *Server) withClientFromStorage(w http.ResponseWriter, r *http.Request, h
 		return
 	}
 
-	if client.Secret != clientSecret {
-		if clientSecret == "" {
-			s.logger.Infof("missing client_secret on token request for client: %s", client.ID)
-		} else {
-			s.logger.Infof("invalid client_secret on token request for client: %s", client.ID)
+	if s.hashClientSecret {
+		if err := bcrypt.CompareHashAndPassword([]byte(client.Secret), []byte(clientSecret)); err != nil {
+			s.tokenErrHelper(w, errInvalidClient, "Invalid client credentials.", http.StatusUnauthorized)
+			return
 		}
-	}
-
-	if err := checkCost([]byte(client.Secret)); err != nil {
-		s.logger.Errorf("failed to check cost of client secret: %v", err)
-		s.tokenErrHelper(w, errServerError, "", http.StatusInternalServerError)
-		return
-	}
-	if err := bcrypt.CompareHashAndPassword([]byte(client.Secret), []byte(clientSecret)); err != nil {
-		s.tokenErrHelper(w, errInvalidClient, "Invalid client credentials.", http.StatusUnauthorized)
-		return
+	} else {
+		if subtle.ConstantTimeCompare([]byte(client.Secret), []byte(clientSecret)) != 1 {
+			if clientSecret == "" {
+				s.logger.Infof("missing client_secret on token request for client: %s", client.ID)
+			} else {
+				s.logger.Infof("invalid client_secret on token request for client: %s", client.ID)
+			}
+			s.tokenErrHelper(w, errInvalidClient, "Invalid client credentials.", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	handler(w, r, client)
