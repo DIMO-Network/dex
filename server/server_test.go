@@ -679,6 +679,13 @@ func TestOAuth2CodeFlow(t *testing.T) {
 			})
 			defer httpServer.Close()
 
+			policy, err := NewRefreshTokenPolicyFromConfig(s.logger, false, "", "", "")
+			if err != nil {
+				t.Fatalf("failed to prepare rotation policy: %v", err)
+			}
+			policy.Clock = now
+			s.refreshTokenPolicy = policy
+
 			mockConn := s.connectors["mock"]
 			conn = mockConn.Connector.(*mock.Callback)
 
@@ -1509,6 +1516,13 @@ func TestOAuth2DeviceFlow(t *testing.T) {
 				c.IDTokensValidFor = idTokensValidFor
 			})
 			defer httpServer.Close()
+
+			policy, err := NewRefreshTokenPolicyFromConfig(s.logger, false, "", "", "")
+			if err != nil {
+				t.Fatalf("failed to prepare rotation policy: %v", err)
+			}
+			policy.Clock = now
+			s.refreshTokenPolicy = policy
 
 			mockConn := s.connectors["mock"]
 			conn = mockConn.Connector.(*mock.Callback)
