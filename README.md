@@ -124,3 +124,5 @@ Please see our [security policy](.github/SECURITY.md) for details about reportin
 [go-oidc]: https://github.com/coreos/go-oidc
 [issue-1065]: https://github.com/dexidp/dex/issues/1065
 [release-notes]: https://github.com/dexidp/dex/releases
+
+Trivial branch
