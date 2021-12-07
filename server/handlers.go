@@ -847,7 +847,10 @@ func (s *Server) sendCodeResponse(w http.ResponseWriter, r *http.Request, authRe
 		u.RawQuery = q.Encode()
 	}
 
-	http.Redirect(w, r, u.String(), http.StatusSeeOther)
+	s.renderJSON(w, struct {
+		Code string `json:"code"`
+	}{code.ID})
+	//http.Redirect(w, r, u.String(), http.StatusSeeOther)
 }
 
 func (s *Server) withClientFromStorage(w http.ResponseWriter, r *http.Request, handler func(http.ResponseWriter, *http.Request, storage.Client)) {
