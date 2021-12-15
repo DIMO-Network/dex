@@ -225,7 +225,7 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		s.renderErrorJSON(w, http.StatusBadRequest, "Invalid redirect URI")
 	}
 
-	challenge := fmt.Sprintf("The site %s wants to verify your ownership of the address %s. This message contains a securely generated random string %s, and signing it will prove ownership.", u.Host, nonceReq.Address, nonce)
+	challenge := fmt.Sprintf("The site %s would like you to prove your ownership of the Ethereum address %s by signing the following random message:\n\n%s", u.Host, nonceReq.Address, nonce)
 
 	bts, err := json.Marshal(web3ConnectorData{Address: nonceReq.Address, Nonce: challenge})
 	if err != nil {
