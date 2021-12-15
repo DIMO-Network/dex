@@ -214,11 +214,9 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client, err := s.storage.GetClient(authReq.ClientID)
+	u, err := url.Parse(authReq.RedirectURI)
 	if err != nil {
-		s.logger.Errorf("Failed to get client %q: %v", authReq.ClientID, err)
-		s.renderError(r, w, http.StatusInternalServerError, "Failed to retrieve client.")
-		return
+		s.renderErrorJSON(w, http.StatusBadRequest, "Invalid redirect URI")
 	}
 
 	nonce, err := generateNonce()
@@ -227,7 +225,7 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	challenge := fmt.Sprintf("%s is asking you to please verify ownership of the address %s by signing this random string: %s", client.Name, nonceReq.Address, nonce)
+	challenge := fmt.Sprintf("%s is asking you to please verify ownership of the address %s by signing this random string: %s", u.Hostname(), nonceReq.Address, nonce)
 
 	bts, err := json.Marshal(web3ConnectorData{Address: nonceReq.Address, Nonce: challenge})
 	if err != nil {
