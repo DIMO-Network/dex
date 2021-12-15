@@ -214,18 +214,20 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	client, err := s.storage.GetClient(authReq.ClientID)
+	if err != nil {
+		s.logger.Errorf("Failed to get client %q: %v", authReq.ClientID, err)
+		s.renderError(r, w, http.StatusInternalServerError, "Failed to retrieve client.")
+		return
+	}
+
 	nonce, err := generateNonce()
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusInternalServerError, "No source of randomness.")
 		return
 	}
 
-	u, err := url.Parse(authReq.RedirectURI)
-	if err != nil {
-		s.renderErrorJSON(w, http.StatusBadRequest, "Invalid redirect URI")
-	}
-
-	challenge := fmt.Sprintf("The site %s would like you to prove your ownership of the Ethereum address %s by signing the following random message:\n\n%s", u.Host, nonceReq.Address, nonce)
+	challenge := fmt.Sprintf("%s is asking you to please verify ownership of the address %s by signing this random string: %s", client.Name, nonceReq.Address, nonce)
 
 	bts, err := json.Marshal(web3ConnectorData{Address: nonceReq.Address, Nonce: challenge})
 	if err != nil {
