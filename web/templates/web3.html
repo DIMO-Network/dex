@@ -1,58 +1,111 @@
 {{ template "header.html" . }}
-
+<style>
+  .web3-btn {
+    border-radius: 4px;
+    border: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.25), 0 0 1px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    padding: 0;
+    --tw-bg-opacity: 1;
+    background-color: rgba(47, 128, 237, var(--tw-bg-opacity));
+    margin-top: 15px;
+  }
+  
+  .web3-reset-btn {
+    cursor: pointer;
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+    margin-top: 15px;
+    margin-left: 15px;
+  }
+  
+  
+  .web3-btn-text {
+      font-size: 16px;
+    font-weight: 300;
+    color: #fff;
+  }
+  
+</style>
 <script src="https://unpkg.com/web3@latest/dist/web3.min.js"></script>
 <script src="https://unpkg.com/web3modal"></script>
 <script src="https://unpkg.com/@walletconnect/web3-provider"></script>
 
 <script>
-const Web3 = window.Web3;
-const Web3Modal = window.Web3Modal.default;
-const WalletConnectProvider = window.WalletConnectProvider.default;
+  let provider;
+  let Web3
+  let Web3Modal;
+  let web3Modal;
+  let web3;
+  let WalletConnectProvider;
+  async function postJson(url, obj) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(obj),
+    })
+  }
 
-async function postJson(url, obj) {
-  return fetch(url, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(obj),
-  })
-}
+  function displayError(msg) {
+    const errorBox = document.getElementById("web3-error");
+    errorBox.style.display = "block";
+    errorBox.textContent = msg;
+  }
+  function init() {
+    const connectButton = document.getElementById("connect-button");
+    connectButton.onclick = function () {
+      getSignature()
+    }
+    const resetButton = document.getElementById("reset-button");
+    resetButton.onclick = function () {
+      reset()
+    }
 
-function displayError(msg) {
-  const errorBox = document.getElementById("web3-error");
-  errorBox.style.display = "block";
-  errorBox.textContent = msg;
-}
+  }
 
-async function init() {
-  const web3Modal = new Web3Modal({
-    network: "mainnet",
-    disableInjectedProvider: false,
-    cacheProvider: false,
-    providerOptions: {
-      {{ if ne .InfuraID "" }}
-      walletconnect: {
-        package: WalletConnectProvider, 
-        options: {
-          infuraId: {{ .InfuraID }}
-        }
-      }
-      {{ end }}
+
+
+
+
+
+
+
+  async function getSignature() {
+    Web3 = window.Web3;
+    Web3Modal = window.Web3Modal.default;
+    WalletConnectProvider = window.WalletConnectProvider.default;
+    web3Modal = new Web3Modal({
+      network: "mainnet",
+      disableInjectedProvider: false,
+      cacheProvider: false,
+      providerOptions: {
+      {{ if ne.InfuraID "" }}
+  walletconnect: {
+    package: WalletConnectProvider,
+      options: {
+      infuraId: { { .InfuraID } }
+    }
+  }
+  { { end } }
     },
-    theme: {
-      background: "rgb(39, 49, 56)",
+  theme: {
+    background: "rgb(39, 49, 56)",
       main: "rgb(199, 199, 199)",
-      secondary: "rgb(136, 136, 136)",
-      border: "rgba(195, 195, 195, 0.14)",
-      hover: "rgb(16, 26, 32)",
+        secondary: "rgb(136, 136, 136)",
+          border: "rgba(195, 195, 195, 0.14)",
+            hover: "rgb(16, 26, 32)",
     },
   });
-  const provider = await web3Modal.connect();
-  const web3 = new Web3(provider);
+
+
+  provider = await web3Modal.connect();
+  web3 = new Web3(provider);
 
   const accounts = await web3.eth.getAccounts();
   const selectedAccount = accounts[0];
 
-  const challengeResp = await postJson("{{ .ChallengeURL }}", {address: selectedAccount, state: "{{ .AuthID }}"});
+  const challengeResp = await postJson("{{ .ChallengeURL }}", { address: selectedAccount, state: "{{ .AuthID }}" });
   const challengeBody = await challengeResp.json();
 
   web3.eth.personal.sign(challengeBody.nonce, selectedAccount, "", async (error, signature) => {
@@ -60,7 +113,7 @@ async function init() {
       displayError("Wallet error: (Code " + error.code + ") " + error.message);
       return;
     }
-    const verifyResp = await postJson("{{ .VerifyURL }}", {signed: signature, state: "{{ .AuthID }}"});
+    const verifyResp = await postJson("{{ .VerifyURL }}", { signed: signature, state: "{{ .AuthID }}" });
     if (verifyResp.ok) {
       const verifyBody = await verifyResp.json();
       window.location.replace(verifyBody.redirect);
@@ -71,7 +124,18 @@ async function init() {
   });
 }
 
-window.addEventListener("load", init);
+
+  async function reset() {
+    if (provider && provider.close) {
+      await provider.close();
+      provider = null;
+    }
+    if (web3Modal) {
+      await web3Modal.clearCachedProvider();
+    }
+  }
+
+  window.addEventListener("load", init);
 </script>
 
 <div class="theme-panel">
@@ -80,6 +144,15 @@ window.addEventListener("load", init);
     <div class="dex-subtle-text">Attempting to log in with your browser wallet</div>
     <div id="web3-error" class="dex-error-box" style="display: none;"> </div>
   </div>
+  <div>
+    <button class="web3-btn" id="connect-button">
+        <span class="dex-btn-text web3-btn-text">Connect</span>
+    </button>
+    <button class="web3-reset-btn" id="reset-button">
+        <span class="dex-btn-text web3-btn-text">Reset</span>
+    </button>
 </div>
+</div>
+
 
 {{ template "footer.html" . }}
