@@ -80,14 +80,14 @@
       disableInjectedProvider: false,
       cacheProvider: false,
       providerOptions: {
-      {{ if ne.InfuraID "" }}
+      {{ if ne .InfuraID "" }}
   walletconnect: {
     package: WalletConnectProvider,
       options: {
-      infuraId: { { .InfuraID } }
+      infuraId: {{ .InfuraID }}
     }
   }
-  { { end } }
+  {{ end }}
     },
   theme: {
     background: "rgb(39, 49, 56)",
