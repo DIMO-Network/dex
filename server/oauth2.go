@@ -318,11 +318,12 @@ func (s *Server) newIDToken(clientID string, claims storage.Claims, scopes []str
 	validFor := s.idTokensValidFor
 
 	if client.IDTokenExpiry != "" {
-		if clientValidFor, err := time.ParseDuration(client.IDTokenExpiry); err != nil {
+		switch clientValidFor, err := time.ParseDuration(client.IDTokenExpiry); {
+		case err != nil:
 			s.logger.Errorf("Client %q custom ID token expiry %q not a valid duration, this should never happen; using global setting of %q", clientID, client.IDTokenExpiry, s.idTokensValidFor)
-		} else if clientValidFor > s.idTokensValidFor {
+		case clientValidFor > s.idTokensValidFor:
 			s.logger.Errorf("Client %q custom ID token expiry %q longer than the global setting of %s; using the latter", clientID, client.IDTokenExpiry, s.idTokensValidFor)
-		} else {
+		default:
 			validFor = clientValidFor
 		}
 	}
