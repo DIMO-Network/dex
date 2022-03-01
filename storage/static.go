@@ -2,7 +2,6 @@ package storage
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/dexidp/dex/pkg/log"
@@ -26,7 +25,6 @@ type staticClientsStorage struct {
 func WithStaticClients(s Storage, staticClients []Client) Storage {
 	clientsByID := make(map[string]Client, len(staticClients))
 	for _, client := range staticClients {
-		fmt.Printf("%+v\n", client)
 		clientsByID[client.ID] = client
 	}
 
@@ -34,9 +32,7 @@ func WithStaticClients(s Storage, staticClients []Client) Storage {
 }
 
 func (s staticClientsStorage) GetClient(id string) (Client, error) {
-	fmt.Printf("They're trying to get %s\n", id)
 	if client, ok := s.clientsByID[id]; ok {
-		fmt.Printf("Found me in the map, %+v", client)
 		return client, nil
 	}
 	return s.Storage.GetClient(id)
