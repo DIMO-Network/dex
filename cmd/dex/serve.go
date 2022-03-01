@@ -209,14 +209,10 @@ func runServe(options serveOptions) error {
 				}
 				c.StaticClients[i].Secret = os.Getenv(client.SecretEnv)
 			}
-
 			if client.IDTokenExpiry != "" {
-				d, err := time.ParseDuration(client.ID)
-				if err != nil {
-					return fmt.Errorf("invalid config: IDTokenExpiry failed to parse for client %q", client.ID)
+				if _, err := time.ParseDuration(client.IDTokenExpiry); err != nil {
+					return fmt.Errorf("invalid config: IDTokenExpiry field must be a valid duration for client %q", client.ID)
 				}
-				// It's awkward to check here that this is less than the global Expiry.IDToken, so we just won't do it.
-				client.IDTokenExpiryDur = d
 			}
 			logger.Infof("config static client: %s", client.Name)
 		}

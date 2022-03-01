@@ -158,8 +158,6 @@ type Client struct {
 	// We do not store this in the database, it only works for static clients.
 	IDTokenExpiry string `json:"idTokenExpiry" yaml:"idTokenExpiry"`
 
-	IDTokenExpiryDur time.Duration `json:"-" yaml:"-"`
-
 	// TrustedPeers are a list of peers which can issue tokens on this client's behalf using
 	// the dynamic "oauth2:server:client_id:(client_id)" scope. If a peer makes such a request,
 	// this client's ID will appear as the ID Token's audience.
