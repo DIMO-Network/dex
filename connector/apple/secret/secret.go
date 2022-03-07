@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"time"
 
 	"gopkg.in/square/go-jose.v2"
@@ -69,7 +69,7 @@ func NewSecret(cfg *Config) (*Secret, error) {
 }
 
 func parseKeyFile(keyfile string) (interface{}, error) {
-	raw, err := ioutil.ReadFile(keyfile)
+	raw, err := os.ReadFile(keyfile)
 	if err != nil {
 		return "", err
 	}

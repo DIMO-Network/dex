@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -17,7 +16,7 @@ type testHarness struct {
 	privateKeyFile *os.File
 }
 
-func createKeyFile(t *testing.T) *os.File {
+func createKeyFile(_ *testing.T) *os.File {
 	privkey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
 	bytes, _ := x509.MarshalPKCS8PrivateKey(privkey)
@@ -26,7 +25,7 @@ func createKeyFile(t *testing.T) *os.File {
 		Bytes: bytes,
 	}
 	raw := pem.EncodeToMemory(&block)
-	tmpfile, _ := ioutil.TempFile("", "privatekey")
+	tmpfile, _ := os.CreateTemp("", "privatekey")
 	tmpfile.Write(raw)
 	return tmpfile
 }
