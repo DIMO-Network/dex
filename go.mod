@@ -14,7 +14,7 @@ require (
 	github.com/ethereum/go-ethereum v1.10.12
 	github.com/felixge/httpsnoop v1.0.3
 	github.com/ghodss/yaml v1.0.0
-	github.com/go-ldap/ldap/v3 v3.4.2
+	github.com/go-ldap/ldap/v3 v3.4.3
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
@@ -32,7 +32,7 @@ require (
 	github.com/stretchr/testify v1.7.2
 	go.etcd.io/etcd/client/pkg/v3 v3.5.4
 	go.etcd.io/etcd/client/v3 v3.5.4
-	golang.org/x/crypto v0.0.0-20220208050332-20e1d8d225ab
+	golang.org/x/crypto v0.0.0-20220331220935-ae2d96664a29
 	golang.org/x/net v0.0.0-20220607020251-c690dde0001d
 	golang.org/x/oauth2 v0.0.0-20220524215830-622c5d57e401
 	google.golang.org/api v0.82.0
@@ -44,7 +44,7 @@ require (
 require (
 	ariga.io/atlas v0.3.7-0.20220303204946-787354f533c3 // indirect
 	cloud.google.com/go/compute v1.6.1 // indirect
-	github.com/Azure/go-ntlmssp v0.0.0-20200615164410-66371956d46c // indirect
+	github.com/Azure/go-ntlmssp v0.0.0-20211209120228-48547f28849e // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.1.1 // indirect
 	github.com/agext/levenshtein v1.2.1 // indirect
@@ -55,7 +55,7 @@ require (
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/go-asn1-ber/asn1-ber v1.5.1 // indirect
+	github.com/go-asn1-ber/asn1-ber v1.5.4 // indirect
 	github.com/go-openapi/inflect v0.19.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
