@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -21,8 +22,13 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gorilla/mux"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	jose "gopkg.in/square/go-jose.v2"
 
+	pb "github.com/DIMO-Network/shared/api/users"
 	"github.com/dexidp/dex/connector"
 	"github.com/dexidp/dex/server/internal"
 	"github.com/dexidp/dex/storage"
@@ -761,6 +767,45 @@ func (s *Server) handleConnectorCallback(w http.ResponseWriter, r *http.Request)
 // finalizeLogin associates the user's identity with the current AuthRequest, then returns
 // the approval page's path.
 func (s *Server) finalizeLogin(identity connector.Identity, authReq storage.AuthRequest, conn connector.Connector) (string, error) {
+	if authReq.ConnectorID != "web3" {
+		sub := &internal.IDTokenSubject{
+			UserId: identity.UserID,
+			ConnId: authReq.ConnectorID,
+		}
+
+		subjectString, err := internal.Marshal(sub)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal identifier: %w", err)
+		}
+
+		conn, err := grpc.Dial(s.usersURL, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return "", err
+		}
+
+		userClient := pb.NewUserServiceClient(conn)
+		user, err := userClient.GetUser(context.Background(), &pb.GetUserRequest{
+			Id: subjectString,
+		})
+		fmt.Println(user, err)
+		if err != nil {
+			if s, ok := status.FromError(err); ok {
+				if s.Code() != codes.NotFound {
+					return "", fmt.Errorf("failed to retrieve user information: %w", err)
+				}
+			} else {
+				return "", fmt.Errorf("failed to retrieve user information: %w", err)
+			}
+		} else {
+			if user.EthereumAddress != nil {
+				identity = connector.Identity{
+					UserID:   *user.EthereumAddress,
+					Username: *user.EthereumAddress,
+				}
+			}
+		}
+	}
+
 	claims := storage.Claims{
 		UserID:            identity.UserID,
 		Username:          identity.Username,

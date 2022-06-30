@@ -107,6 +107,8 @@ type Config struct {
 	PrometheusRegistry *prometheus.Registry
 
 	HealthChecker gosundheit.Health
+
+	UsersURL string
 }
 
 // WebConfig holds the server's frontend templates and asset configuration.
@@ -150,6 +152,8 @@ func value(val, defaultValue time.Duration) time.Duration {
 // Server is the top level object.
 type Server struct {
 	issuerURL url.URL
+
+	usersURL string
 
 	// mutex for the connectors map.
 	mu sync.Mutex
@@ -266,6 +270,7 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
 
 	s := &Server{
 		issuerURL:              *issuerURL,
+		usersURL:               c.UsersURL,
 		connectors:             make(map[string]Connector),
 		storage:                newKeyCacher(c.Storage, now),
 		supportedResponseTypes: supportedRes,
