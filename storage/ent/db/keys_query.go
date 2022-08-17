@@ -262,7 +262,6 @@ func (kq *KeysQuery) Clone() *KeysQuery {
 //		GroupBy(keys.FieldVerificationKeys).
 //		Aggregate(db.Count()).
 //		Scan(ctx, &v)
-//
 func (kq *KeysQuery) GroupBy(field string, fields ...string) *KeysGroupBy {
 	group := &KeysGroupBy{config: kq.config}
 	group.fields = append([]string{field}, fields...)
@@ -287,7 +286,6 @@ func (kq *KeysQuery) GroupBy(field string, fields ...string) *KeysGroupBy {
 //	client.Keys.Query().
 //		Select(keys.FieldVerificationKeys).
 //		Scan(ctx, &v)
-//
 func (kq *KeysQuery) Select(fields ...string) *KeysSelect {
 	kq.fields = append(kq.fields, fields...)
 	return &KeysSelect{KeysQuery: kq}

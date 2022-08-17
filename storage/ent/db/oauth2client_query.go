@@ -262,7 +262,6 @@ func (oq *OAuth2ClientQuery) Clone() *OAuth2ClientQuery {
 //		GroupBy(oauth2client.FieldSecret).
 //		Aggregate(db.Count()).
 //		Scan(ctx, &v)
-//
 func (oq *OAuth2ClientQuery) GroupBy(field string, fields ...string) *OAuth2ClientGroupBy {
 	group := &OAuth2ClientGroupBy{config: oq.config}
 	group.fields = append([]string{field}, fields...)
@@ -287,7 +286,6 @@ func (oq *OAuth2ClientQuery) GroupBy(field string, fields ...string) *OAuth2Clie
 //	client.OAuth2Client.Query().
 //		Select(oauth2client.FieldSecret).
 //		Scan(ctx, &v)
-//
 func (oq *OAuth2ClientQuery) Select(fields ...string) *OAuth2ClientSelect {
 	oq.fields = append(oq.fields, fields...)
 	return &OAuth2ClientSelect{OAuth2ClientQuery: oq}

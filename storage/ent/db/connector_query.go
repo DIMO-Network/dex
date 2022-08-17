@@ -262,7 +262,6 @@ func (cq *ConnectorQuery) Clone() *ConnectorQuery {
 //		GroupBy(connector.FieldType).
 //		Aggregate(db.Count()).
 //		Scan(ctx, &v)
-//
 func (cq *ConnectorQuery) GroupBy(field string, fields ...string) *ConnectorGroupBy {
 	group := &ConnectorGroupBy{config: cq.config}
 	group.fields = append([]string{field}, fields...)
@@ -287,7 +286,6 @@ func (cq *ConnectorQuery) GroupBy(field string, fields ...string) *ConnectorGrou
 //	client.Connector.Query().
 //		Select(connector.FieldType).
 //		Scan(ctx, &v)
-//
 func (cq *ConnectorQuery) Select(fields ...string) *ConnectorSelect {
 	cq.fields = append(cq.fields, fields...)
 	return &ConnectorSelect{ConnectorQuery: cq}

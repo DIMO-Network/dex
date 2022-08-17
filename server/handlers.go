@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"html/template"
 	"math/big"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"path"
