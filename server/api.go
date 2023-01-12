@@ -424,7 +424,7 @@ func (d dexAPI) GetCustomToken(ctx context.Context, req *api.SignTokenRequest) (
 
 	token, err := CreateCustomToken(d.s, d.logger, payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate Jwt token: %v", err)
+		return nil, fmt.Errorf("failed to generate JWT: %v", err)
 	}
 
 	return &api.SignTokenResp{
