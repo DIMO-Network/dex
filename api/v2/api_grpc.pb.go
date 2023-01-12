@@ -43,7 +43,7 @@ type DexClient interface {
 	// VerifyPassword returns whether a password matches a hash for a specific email or not.
 	VerifyPassword(ctx context.Context, in *VerifyPasswordReq, opts ...grpc.CallOption) (*VerifyPasswordResp, error)
 	// Sign Vehicle Token takes a valid JSON that includes the userID, Id for privileges requested and vehicleID and returns a token
-	GetPrivilegeToken(ctx context.Context, in *GetPrivilegeTokenReq, opts ...grpc.CallOption) (*GetPrivilegeTokenResp, error)
+	GetCustomToken(ctx context.Context, in *SignTokenRequest, opts ...grpc.CallOption) (*SignTokenResp, error)
 }
 
 type dexClient struct {
@@ -153,9 +153,9 @@ func (c *dexClient) VerifyPassword(ctx context.Context, in *VerifyPasswordReq, o
 	return out, nil
 }
 
-func (c *dexClient) GetPrivilegeToken(ctx context.Context, in *GetPrivilegeTokenReq, opts ...grpc.CallOption) (*GetPrivilegeTokenResp, error) {
-	out := new(GetPrivilegeTokenResp)
-	err := c.cc.Invoke(ctx, "/api.Dex/GetPrivilegeToken", in, out, opts...)
+func (c *dexClient) GetCustomToken(ctx context.Context, in *SignTokenRequest, opts ...grpc.CallOption) (*SignTokenResp, error) {
+	out := new(SignTokenResp)
+	err := c.cc.Invoke(ctx, "/api.Dex/GetCustomToken", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ type DexServer interface {
 	// VerifyPassword returns whether a password matches a hash for a specific email or not.
 	VerifyPassword(context.Context, *VerifyPasswordReq) (*VerifyPasswordResp, error)
 	// Sign Vehicle Token takes a valid JSON that includes the userID, Id for privileges requested and vehicleID and returns a token
-	GetPrivilegeToken(context.Context, *GetPrivilegeTokenReq) (*GetPrivilegeTokenResp, error)
+	GetCustomToken(context.Context, *SignTokenRequest) (*SignTokenResp, error)
 	mustEmbedUnimplementedDexServer()
 }
 
@@ -232,8 +232,8 @@ func (UnimplementedDexServer) RevokeRefresh(context.Context, *RevokeRefreshReq) 
 func (UnimplementedDexServer) VerifyPassword(context.Context, *VerifyPasswordReq) (*VerifyPasswordResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VerifyPassword not implemented")
 }
-func (UnimplementedDexServer) GetPrivilegeToken(context.Context, *GetPrivilegeTokenReq) (*GetPrivilegeTokenResp, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetPrivilegeToken not implemented")
+func (UnimplementedDexServer) GetCustomToken(context.Context, *SignTokenRequest) (*SignTokenResp, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCustomToken not implemented")
 }
 func (UnimplementedDexServer) mustEmbedUnimplementedDexServer() {}
 
@@ -446,20 +446,20 @@ func _Dex_VerifyPassword_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Dex_GetPrivilegeToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetPrivilegeTokenReq)
+func _Dex_GetCustomToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignTokenRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DexServer).GetPrivilegeToken(ctx, in)
+		return srv.(DexServer).GetCustomToken(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/api.Dex/GetPrivilegeToken",
+		FullMethod: "/api.Dex/GetCustomToken",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DexServer).GetPrivilegeToken(ctx, req.(*GetPrivilegeTokenReq))
+		return srv.(DexServer).GetCustomToken(ctx, req.(*SignTokenRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -516,8 +516,8 @@ var Dex_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Dex_VerifyPassword_Handler,
 		},
 		{
-			MethodName: "GetPrivilegeToken",
-			Handler:    _Dex_GetPrivilegeToken_Handler,
+			MethodName: "GetCustomToken",
+			Handler:    _Dex_GetCustomToken_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
