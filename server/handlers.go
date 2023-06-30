@@ -261,7 +261,7 @@ func (s *Server) handleGenerateChallenge(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	siweMessage, err := siwe.InitMessage(u.Hostname(), addr.Hex(), "http://127.0.0.1:5556/dex/auth/web3", nonce, map[string]interface{}{})
+	siweMessage, err := siwe.InitMessage(u.Hostname(), addr.Hex(), u.String(), nonce, map[string]interface{}{})
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusInternalServerError, "Failed to construct SIWE payload.")
 		return
@@ -328,7 +328,7 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	siweMessage, err := siwe.InitMessage(u.Hostname(), nonceReq.Address, "http://127.0.0.1:5556/dex/auth/web3", nonce, map[string]interface{}{})
+	siweMessage, err := siwe.InitMessage(u.Hostname(), nonceReq.Address, u.String(), nonce, map[string]interface{}{})
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusInternalServerError, "Failed to construct SIWE payload.")
 		return
