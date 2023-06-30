@@ -260,10 +260,14 @@ func (s *Server) handleGenerateChallenge(w http.ResponseWriter, r *http.Request)
 		s.renderErrorJSON(w, http.StatusInternalServerError, "No source of randomness.")
 		return
 	}
+	options := map[string]interface{}{
+		"statement": fmt.Sprintf("%s is asking you sign in.", u.Hostname()),
+	}
 
-	siweMessage, err := siwe.InitMessage(u.Hostname(), addr.Hex(), u.String(), nonce, map[string]interface{}{})
+	siweMessage, err := siwe.InitMessage(s.issuerURL.Host, addr.Hex(), s.issuerURL.String(), nonce, options)
 	if err != nil {
-		s.renderErrorJSON(w, http.StatusInternalServerError, "Failed to construct SIWE payload.")
+		//asd
+		s.renderErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	challenge := siweMessage.String()
@@ -327,10 +331,13 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		s.renderErrorJSON(w, http.StatusInternalServerError, "No source of randomness.")
 		return
 	}
+	options := map[string]interface{}{
+		"statement": fmt.Sprintf("%s is asking you sign in.", u.Hostname()),
+	}
 
-	siweMessage, err := siwe.InitMessage(u.Hostname(), nonceReq.Address, u.String(), nonce, map[string]interface{}{})
+	siweMessage, err := siwe.InitMessage(s.issuerURL.Host, nonceReq.Address, s.issuerURL.String(), nonce, options)
 	if err != nil {
-		s.renderErrorJSON(w, http.StatusInternalServerError, "Failed to construct SIWE payload.")
+		s.renderErrorJSON(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	challenge := siweMessage.String()

@@ -53,7 +53,6 @@ export const web3Modal = new Web3Modal(
       },
       enableAccountView: true,
       enableExplorer: true,
-      defaultChain: polygon,
       themeMode: "dark",
       themeVariables: {
           "--w3m-accent-color": "#FF8700",
