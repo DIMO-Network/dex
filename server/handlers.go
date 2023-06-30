@@ -27,6 +27,7 @@ import (
 	"github.com/dexidp/dex/connector"
 	"github.com/dexidp/dex/server/internal"
 	"github.com/dexidp/dex/storage"
+	"github.com/spruceid/siwe-go"
 )
 
 const (
@@ -260,7 +261,12 @@ func (s *Server) handleGenerateChallenge(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	challenge := fmt.Sprintf("%s is asking you to please verify ownership of the address %s by signing this random string: %s", u.Hostname(), addr.Hex(), nonce)
+	siweMessage, err := siwe.InitMessage(u.Hostname(), addr.Hex(), "http://127.0.0.1:5556/dex/auth/web3", nonce, map[string]interface{}{})
+	if err != nil {
+		s.renderErrorJSON(w, http.StatusInternalServerError, "Failed to construct SIWE payload.")
+		return
+	}
+	challenge := siweMessage.String()
 
 	authReq.ConnectorData, err = json.Marshal(web3ConnectorData{Address: addr.Hex(), Nonce: challenge})
 	if err != nil {
@@ -322,7 +328,12 @@ func (s *Server) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	challenge := fmt.Sprintf("%s is asking you to please verify ownership of the address %s by signing this random string: %s", u.Hostname(), nonceReq.Address, nonce)
+	siweMessage, err := siwe.InitMessage(u.Hostname(), nonceReq.Address, "http://127.0.0.1:5556/dex/auth/web3", nonce, map[string]interface{}{})
+	if err != nil {
+		s.renderErrorJSON(w, http.StatusInternalServerError, "Failed to construct SIWE payload.")
+		return
+	}
+	challenge := siweMessage.String()
 
 	bts, err := json.Marshal(web3ConnectorData{Address: nonceReq.Address, Nonce: challenge})
 	if err != nil {
