@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dexidp/dex/connector"
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+
 	"log"
 	"testing"
 )
@@ -45,11 +47,11 @@ func generateWallet() (*ecdsa.PrivateKey, *common.Address, error) {
 	return privateKey, &userAddr, nil
 }
 
-func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, common.Hash) {
+func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, []byte) {
 	data := []byte(msg)
-	hash := crypto.Keccak256Hash(data)
+	hash := accounts.TextHash(data)
 
-	signature, err := crypto.Sign(hash.Bytes(), pk)
+	signature, err := crypto.Sign(hash, pk)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,7 +75,6 @@ func TestEOALogin(t *testing.T) {
 	assert.NoError(t, err)
 
 	rawMsg := "Mock Signable Message"
-	sigMsg, hash := signMessage(rawMsg, pk)
 
 	testCases := map[string]func() testCase{
 		"decode_error_signed_message": func() testCase {
@@ -86,15 +87,15 @@ func TestEOALogin(t *testing.T) {
 			}
 		},
 		"v_parameter_error_signed_message": func() testCase {
-			sigWithInvalidVParam := sigMsg
+			sigWithInvalidVParam, hash := signMessage(rawMsg, pk)
 			sigWithInvalidVParam[64] = 100
 
 			return testCase{
 				address:       addr.Hex(),
-				msg:           hash.Hex(),
+				msg:           hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigWithInvalidVParam),
 				shouldErr:     true,
-				err:           fmt.Errorf("byte at index 64 of signed message should be 27 or 28: %s", hexutil.Encode(sigMsg)),
+				err:           fmt.Errorf("byte at index 64 of signed message should be 27 or 28: %s", hexutil.Encode(sigWithInvalidVParam)),
 			}
 		},
 		"error_mismatch_address": func() testCase {
@@ -105,16 +106,17 @@ func TestEOALogin(t *testing.T) {
 
 			return testCase{
 				address:       addr.Hex(),
-				msg:           hash.Hex(),
+				msg:           hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigMsg2),
 				shouldErr:     true,
 				err:           fmt.Errorf("given address and address recovered from signed nonce do not match"),
 			}
 		},
 		"success_verify_signature": func() testCase {
+			sigMsg, hash := signMessage(rawMsg, pk)
 			return testCase{
 				address:       addr.Hex(),
-				msg:           hash.Hex(),
+				msg:           hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigMsg),
 				shouldErr:     false,
 				err:           nil,

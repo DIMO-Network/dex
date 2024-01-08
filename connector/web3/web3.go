@@ -4,7 +4,8 @@ package web3
 import (
 	"fmt"
 	"github.com/dexidp/dex/connector"
-	"github.com/dexidp/dex/pkg/log"
+	lg "github.com/dexidp/dex/pkg/log"
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -12,18 +13,24 @@ import (
 
 type Config struct {
 	InfuraID string `json:"infuraId"`
+	RpcURL   string `json:"rpcUrl"`
 }
 
-func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error) {
-	return &web3Connector{infuraID: c.InfuraID}, nil
+func (c *Config) Open(id string, logger lg.Logger) (connector.Connector, error) {
+	return &web3Connector{infuraID: c.InfuraID, rpcUrl: c.RpcURL}, nil
 }
 
 type web3Connector struct {
 	infuraID string
+	rpcUrl   string
 }
 
 func (c *web3Connector) InfuraID() string {
 	return c.infuraID
+}
+
+func (c *web3Connector) RpcURL() string {
+	return c.rpcUrl
 }
 
 // https://gist.github.com/dcb9/385631846097e1f59e3cba3b1d42f3ed#file-eth_sign_verify-go
@@ -41,6 +48,7 @@ func (c *web3Connector) Verify(address, msg, signedMsg string) (identity connect
 		signb[64] -= 27
 	} else if signb[64] != 0 && signb[64] != 1 {
 		// We allow 0 or 1 because some non-conformant devices like Ledger use it.
+		// TODO - Verify using ERC-1271
 		return identity, fmt.Errorf("byte at index 64 of signed message should be 27 or 28: %s", signedMsg)
 	}
 
@@ -54,12 +62,12 @@ func (c *web3Connector) Verify(address, msg, signedMsg string) (identity connect
 	if recoveredAddr != addrb {
 		return identity, fmt.Errorf("given address and address recovered from signed nonce do not match")
 	}
+
 	identity.UserID = address
 	identity.Username = address
 	return identity, nil
 }
 
 func signHash(data []byte) []byte {
-	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data)
-	return crypto.Keccak256([]byte(msg))
+	return accounts.TextHash(data)
 }
