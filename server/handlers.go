@@ -8,6 +8,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"html/template"
 	"math/big"
 	"net/http"
@@ -405,7 +407,12 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	identity, err := w3Conn.Verify(data.Address, data.Nonce, verifyReq.Signed)
+	ethClient, err := createETHClient(w3Conn.RpcURL())
+	if err != nil {
+		s.renderErrorJSON(w, http.StatusInternalServerError, "Requested resource does not exist.")
+		return
+	}
+	identity, err := w3Conn.Verify(data.Address, data.Nonce, verifyReq.Signed, ethClient)
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusBadRequest, "Could not verify signature.")
 		return
@@ -461,7 +468,13 @@ func (s *Server) handleVerifyDirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	identity, err := w3Conn.Verify(data.Address, data.Nonce, verifyReq.Signed)
+	ethClient, err := createETHClient(w3Conn.RpcURL())
+	if err != nil {
+		s.renderErrorJSON(w, http.StatusInternalServerError, "Requested resource does not exist.")
+		return
+	}
+
+	identity, err := w3Conn.Verify(data.Address, data.Nonce, verifyReq.Signed, ethClient)
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusBadRequest, "Could not verify signature.")
 		return
@@ -550,7 +563,13 @@ func (s *Server) handleSubmitChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	identity, err := w3Conn.Verify(data.Address, data.Nonce, r.PostFormValue("signature"))
+	ethClient, err := createETHClient(w3Conn.RpcURL())
+	if err != nil {
+		s.renderErrorJSON(w, http.StatusInternalServerError, "Requested resource does not exist.")
+		return
+	}
+
+	identity, err := w3Conn.Verify(data.Address, data.Nonce, r.PostFormValue("signature"), ethClient)
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusBadRequest, "Could not verify signature.")
 		return
@@ -779,7 +798,7 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 		case connector.Web3Connector:
 			challengeURL := url.URL{Path: s.absPath("/auth", connID, "challenge")}
 			verifyURL := url.URL{Path: s.absPath("/auth", connID, "verify")}
-			s.templates.web3login(r, w, challengeURL.String(), verifyURL.String(), authReq.ID, conn.InfuraID())
+			s.templates.web3login(r, w, challengeURL.String(), verifyURL.String(), authReq.ID, conn.InfuraID(), conn.RpcURL())
 		default:
 			s.renderError(r, w, http.StatusBadRequest, "Requested resource does not exist.")
 		}
@@ -1886,4 +1905,13 @@ func usernamePrompt(conn connector.PasswordConnector) string {
 		return attr
 	}
 	return "Username"
+}
+
+func createETHClient(rpcURL string) (bind.ContractBackend, error) {
+	client, err := ethclient.Dial(rpcURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }

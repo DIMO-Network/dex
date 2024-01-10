@@ -6,15 +6,25 @@ import (
 	"fmt"
 	"github.com/dexidp/dex/connector"
 	"github.com/ethereum/go-ethereum/accounts"
+	abi2 "github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-
 	"log"
+	"math/big"
+	"strings"
 	"testing"
 )
+
+type BkTest struct {
+	t *testing.T
+}
 
 func newConnector(t *testing.T) *web3Connector {
 	log := logrus.New()
@@ -56,6 +66,8 @@ func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, []byte) {
 		log.Fatal(err)
 	}
 
+	signature[64] += 27
+
 	return signature, hash
 }
 
@@ -95,7 +107,7 @@ func TestEOALogin(t *testing.T) {
 				msg:           hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigWithInvalidVParam),
 				shouldErr:     true,
-				err:           fmt.Errorf("byte at index 64 of signed message should be 27 or 28: %s", hexutil.Encode(sigWithInvalidVParam)),
+				err:           errors.New("could not decode hex string of signed nonce"),
 			}
 		},
 		"error_mismatch_address": func() testCase {
@@ -114,6 +126,7 @@ func TestEOALogin(t *testing.T) {
 		},
 		"success_verify_signature": func() testCase {
 			sigMsg, hash := signMessage(rawMsg, pk)
+			t.Log(sigMsg[64], sigMsg[0], sigMsg[27])
 			return testCase{
 				address:       addr.Hex(),
 				msg:           hexutil.Encode(hash),
@@ -131,7 +144,7 @@ func TestEOALogin(t *testing.T) {
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			tc := testCase()
-			res, err := conn.Verify(tc.address, rawMsg, tc.signedMessage)
+			res, err := conn.Verify(tc.address, rawMsg, tc.signedMessage, nil)
 			if tc.shouldErr {
 				assert.ErrorContains(t, err, tc.err.Error())
 			} else {
@@ -140,4 +153,46 @@ func TestEOALogin(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (b BkTest) deployContract(auth *bind.TransactOpts, backend bind.ContractBackend, ctr *bind.MetaData) (common.Address, *types.Transaction, *bind.BoundContract, error) {
+	parsed, err := abi2.JSON(strings.NewReader(ctr.ABI))
+	if err != nil {
+		return common.Address{}, nil, nil, err
+	}
+
+	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(ctr.Bin), backend)
+	if err != nil {
+		b.t.Log("deploy contract error -- ", err)
+		return common.Address{}, nil, nil, err
+	}
+
+	return address, tx, contract, err
+}
+
+func (b BkTest) createMockBlockchain() (*backends.SimulatedBackend, *bind.TransactOpts, *ecdsa.PrivateKey, error) {
+	pk, addr, err := generateWallet()
+	if err != nil {
+		b.t.Log(err, "pk err")
+		return nil, nil, nil, err
+	}
+
+	auth, err := bind.NewKeyedTransactorWithChainID(pk, big.NewInt(1337))
+	if err != nil {
+		b.t.Log(err, "auth creator error")
+		return nil, nil, nil, err
+	}
+
+	balance := new(big.Int)
+	balance.SetString("10000000000000000000", 10) // 10 eth in wei
+	blockGasLimit := uint64(8000029)
+
+	genesisAlloc := map[common.Address]core.GenesisAccount{
+		*addr: {
+			Balance: balance,
+		},
+	}
+	sim := backends.NewSimulatedBackend(genesisAlloc, blockGasLimit)
+
+	return sim, auth, pk, nil
 }
