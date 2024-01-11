@@ -76,7 +76,7 @@ func TestEOALogin(t *testing.T) {
 
 	type testCase struct {
 		address       string
-		msg           string
+		msgHash       string
 		signedMessage string
 		shouldErr     bool
 		err           error
@@ -92,7 +92,7 @@ func TestEOALogin(t *testing.T) {
 		"decode_error_signed_message": func() testCase {
 			return testCase{
 				address:       addr.Hex(),
-				msg:           "",
+				msgHash:       "",
 				signedMessage: "",
 				shouldErr:     true,
 				err:           errors.New("could not decode hex string of signed nonce: empty hex string"),
@@ -104,10 +104,10 @@ func TestEOALogin(t *testing.T) {
 
 			return testCase{
 				address:       addr.Hex(),
-				msg:           hexutil.Encode(hash),
+				msgHash:       hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigWithInvalidVParam),
 				shouldErr:     true,
-				err:           errors.New("could not decode hex string of signed nonce"),
+				err:           errors.New("error occurred completing authentication, please try again"),
 			}
 		},
 		"error_mismatch_address": func() testCase {
@@ -118,7 +118,7 @@ func TestEOALogin(t *testing.T) {
 
 			return testCase{
 				address:       addr.Hex(),
-				msg:           hexutil.Encode(hash),
+				msgHash:       hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigMsg2),
 				shouldErr:     true,
 				err:           fmt.Errorf("given address and address recovered from signed nonce do not match"),
@@ -129,7 +129,7 @@ func TestEOALogin(t *testing.T) {
 			t.Log(sigMsg[64], sigMsg[0], sigMsg[27])
 			return testCase{
 				address:       addr.Hex(),
-				msg:           hexutil.Encode(hash),
+				msgHash:       hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigMsg),
 				shouldErr:     false,
 				err:           nil,
@@ -144,7 +144,99 @@ func TestEOALogin(t *testing.T) {
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			tc := testCase()
-			res, err := conn.Verify(tc.address, rawMsg, tc.signedMessage, nil)
+			res, err := conn.Verify(tc.address, rawMsg, tc.signedMessage)
+			if tc.shouldErr {
+				assert.ErrorContains(t, err, tc.err.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.identity, res)
+			}
+		})
+	}
+}
+
+func TestBlockchainBackend(t *testing.T) {
+	bk := BkTest{
+		t: t,
+	}
+	conn := newConnector(t)
+
+	sim, auth, pk, err := bk.createMockBlockchain()
+	assert.NoError(t, err)
+
+	conn.ethClient = sim
+
+	defer func(sim *backends.SimulatedBackend) {
+		err := sim.Close()
+		if err != nil {
+			assert.NoError(t, err)
+		}
+	}(sim)
+
+	ctrAddr, _, _, err := DeployContractAuth(auth, sim, auth.From)
+	assert.NoError(t, err)
+
+	sim.Commit()
+	t.Log("Contract deployed successfully to address", ctrAddr.Hex())
+
+	type testCase struct {
+		address       common.Address
+		msgHash       []byte
+		signedMessage []byte
+		shouldErr     bool
+		err           error
+		identity      connector.Identity
+	}
+
+	rawMsg := "Mock Signable Message"
+	testCases := map[string]func() testCase{
+		"invalid_signer_error": func() testCase {
+			pk2, _, err := generateWallet()
+			assert.NoError(t, err)
+
+			sg, hash := signMessage(rawMsg, pk2)
+
+			return testCase{
+				address:       ctrAddr,
+				msgHash:       hash,
+				signedMessage: sg,
+				shouldErr:     true,
+				err:           errors.New("given address and address recovered from signed nonce do not match"),
+			}
+		},
+		"success_valid_signer": func() testCase {
+			sg, hash := signMessage(rawMsg, pk)
+
+			return testCase{
+				address:       ctrAddr,
+				msgHash:       hash,
+				signedMessage: sg,
+				shouldErr:     false,
+				err:           nil,
+				identity: connector.Identity{
+					UserID:   ctrAddr.Hex(),
+					Username: ctrAddr.Hex(),
+				},
+			}
+		},
+		// Note: always keep this test as the last one, if it runs before the others, ethClient will be nil
+		"no_eth_client_found": func() testCase {
+			conn.ethClient = nil
+			var emptyByte []byte
+			return testCase{
+				address:       ctrAddr,
+				msgHash:       emptyByte,
+				signedMessage: emptyByte,
+				shouldErr:     true,
+				err:           errors.New("error occurred completing authentication, please try again"),
+			}
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			tc := testCase()
+			res, err := conn.VerifyERC1271Signature(tc.address, tc.msgHash, tc.signedMessage)
 			if tc.shouldErr {
 				assert.ErrorContains(t, err, tc.err.Error())
 			} else {

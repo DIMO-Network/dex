@@ -3,7 +3,6 @@ package connector
 
 import (
 	"context"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"net/http"
 )
 
@@ -134,5 +133,5 @@ type Web3Connector interface {
 
 	// Verify checks that the given message was signed by the private key of the given
 	// account.
-	Verify(address, msg, signedMsg string, ethClient bind.ContractBackend) (identity Identity, err error)
+	Verify(address, msg, signedMsg string) (identity Identity, err error)
 }
