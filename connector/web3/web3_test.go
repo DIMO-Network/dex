@@ -6,19 +6,16 @@ import (
 	"fmt"
 	"github.com/dexidp/dex/connector"
 	"github.com/ethereum/go-ethereum/accounts"
-	abi2 "github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"log"
 	"math/big"
-	"strings"
 	"testing"
 )
 
@@ -65,8 +62,6 @@ func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, []byte) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	signature[64] += 27
 
 	return signature, hash
 }
@@ -115,6 +110,7 @@ func TestEOALogin(t *testing.T) {
 			assert.NoError(t, err2)
 
 			sigMsg2, hash := signMessage(rawMsg, pk2)
+			sigMsg2[64] += 27
 
 			return testCase{
 				address:       addr.Hex(),
@@ -126,11 +122,27 @@ func TestEOALogin(t *testing.T) {
 		},
 		"success_verify_signature": func() testCase {
 			sigMsg, hash := signMessage(rawMsg, pk)
-			t.Log(sigMsg[64], sigMsg[0], sigMsg[27])
+			sigMsg[64] += 27
+
 			return testCase{
 				address:       addr.Hex(),
 				msgHash:       hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigMsg),
+				shouldErr:     false,
+				err:           nil,
+				identity: connector.Identity{
+					UserID:   addr.Hex(),
+					Username: addr.Hex(),
+				},
+			}
+		},
+		"erc1271_success_verify_contract_signature": func() testCase {
+			signature, hash := signMessage(rawMsg, pk)
+
+			return testCase{
+				address:       addr.Hex(),
+				msgHash:       hexutil.Encode(hash),
+				signedMessage: hexutil.Encode(signature),
 				shouldErr:     false,
 				err:           nil,
 				identity: connector.Identity{
@@ -245,21 +257,6 @@ func TestBlockchainBackend(t *testing.T) {
 			}
 		})
 	}
-}
-
-func (b BkTest) deployContract(auth *bind.TransactOpts, backend bind.ContractBackend, ctr *bind.MetaData) (common.Address, *types.Transaction, *bind.BoundContract, error) {
-	parsed, err := abi2.JSON(strings.NewReader(ctr.ABI))
-	if err != nil {
-		return common.Address{}, nil, nil, err
-	}
-
-	address, tx, contract, err := bind.DeployContract(auth, parsed, common.FromHex(ctr.Bin), backend)
-	if err != nil {
-		b.t.Log("deploy contract error -- ", err)
-		return common.Address{}, nil, nil, err
-	}
-
-	return address, tx, contract, err
 }
 
 func (b BkTest) createMockBlockchain() (*backends.SimulatedBackend, *bind.TransactOpts, *ecdsa.PrivateKey, error) {

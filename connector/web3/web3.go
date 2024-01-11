@@ -104,7 +104,7 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 		Pending: false,
 	}, msgHash, signature)
 	if err != nil {
-		return identity, fmt.Errorf("given address and address recovered from signed nonce do not match %w", err)
+		return identity, fmt.Errorf("error occurred completing login %w", err)
 	}
 	resultVal := common.BytesToAddress(isValid[:])
 	falsyVal := common.HexToAddress("0xffffffff")
