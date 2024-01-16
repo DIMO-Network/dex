@@ -4,7 +4,7 @@ package web3
 import (
 	"fmt"
 	"github.com/dexidp/dex/connector"
-	lg "github.com/dexidp/dex/pkg/log"
+	"github.com/dexidp/dex/pkg/log"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -13,24 +13,20 @@ import (
 
 type Config struct {
 	InfuraID string `json:"infuraId"`
-	RpcURL   string `json:"rpcUrl"`
+	RPCURL   string `json:"rpcUrl"`
 }
 
-func (c *Config) Open(id string, logger lg.Logger) (connector.Connector, error) {
-	return &web3Connector{infuraID: c.InfuraID, rpcUrl: c.RpcURL}, nil
+func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error) {
+	return &web3Connector{infuraID: c.InfuraID, rpcURL: c.RPCURL}, nil
 }
 
 type web3Connector struct {
 	infuraID string
-	rpcUrl   string
+	rpcURL   string
 }
 
 func (c *web3Connector) InfuraID() string {
 	return c.infuraID
-}
-
-func (c *web3Connector) RpcURL() string {
-	return c.rpcUrl
 }
 
 // https://gist.github.com/dcb9/385631846097e1f59e3cba3b1d42f3ed#file-eth_sign_verify-go

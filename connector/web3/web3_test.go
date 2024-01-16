@@ -12,7 +12,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 
-	"log"
 	"testing"
 )
 
@@ -47,16 +46,16 @@ func generateWallet() (*ecdsa.PrivateKey, *common.Address, error) {
 	return privateKey, &userAddr, nil
 }
 
-func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, []byte) {
+func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, []byte, error) {
 	data := []byte(msg)
 	hash := accounts.TextHash(data)
 
 	signature, err := crypto.Sign(hash, pk)
 	if err != nil {
-		log.Fatal(err)
+		return nil, nil, err
 	}
 
-	return signature, hash
+	return signature, hash, nil
 }
 
 func TestEOALogin(t *testing.T) {
@@ -87,7 +86,8 @@ func TestEOALogin(t *testing.T) {
 			}
 		},
 		"v_parameter_error_signed_message": func() testCase {
-			sigWithInvalidVParam, hash := signMessage(rawMsg, pk)
+			sigWithInvalidVParam, hash, err := signMessage(rawMsg, pk)
+			assert.NoError(t, err)
 			sigWithInvalidVParam[64] = 100
 
 			return testCase{
@@ -102,7 +102,8 @@ func TestEOALogin(t *testing.T) {
 			pk2, _, err2 := generateWallet()
 			assert.NoError(t, err2)
 
-			sigMsg2, hash := signMessage(rawMsg, pk2)
+			sigMsg2, hash, err := signMessage(rawMsg, pk2)
+			assert.NoError(t, err)
 
 			return testCase{
 				address:       addr.Hex(),
@@ -113,7 +114,26 @@ func TestEOALogin(t *testing.T) {
 			}
 		},
 		"success_verify_signature": func() testCase {
-			sigMsg, hash := signMessage(rawMsg, pk)
+			sigMsg, hash, err := signMessage(rawMsg, pk)
+			assert.NoError(t, err)
+			return testCase{
+				address:       addr.Hex(),
+				msg:           hexutil.Encode(hash),
+				signedMessage: hexutil.Encode(sigMsg),
+				shouldErr:     false,
+				err:           nil,
+				identity: connector.Identity{
+					UserID:   addr.Hex(),
+					Username: addr.Hex(),
+				},
+			}
+		},
+		"success_verify_signature_v_value_27Or28": func() testCase {
+			sigMsg, hash, err := signMessage(rawMsg, pk)
+			assert.NoError(t, err)
+
+			sigMsg[64] += 27
+
 			return testCase{
 				address:       addr.Hex(),
 				msg:           hexutil.Encode(hash),
