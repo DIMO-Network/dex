@@ -94,7 +94,7 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 	 */
 	ct, err := NewErc1271(contractAddress, c.ethClient)
 	if err != nil {
-		return identity, errors.New("error occurred completing login")
+		return identity, fmt.Errorf("error occurred completing login %w", err)
 	}
 
 	isValid, err := ct.IsValidSignature(&bind.CallOpts{}, msgHash, signature)
