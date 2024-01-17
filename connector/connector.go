@@ -3,6 +3,7 @@ package connector
 
 import (
 	"context"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"net/http"
 )
 
@@ -128,10 +129,9 @@ type Web3Connector interface {
 	// empty string.
 	InfuraID() string
 
-	// RpcUrl returns the configured eth rpc url to connect to
-	RpcURL() string
-
 	// Verify checks that the given message was signed by the private key of the given
 	// account.
 	Verify(address, msg, signedMsg string) (identity Identity, err error)
+
+	SetEthClient(ethClient bind.ContractBackend)
 }

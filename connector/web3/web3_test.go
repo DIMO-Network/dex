@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"log"
 	"math/big"
 	"testing"
 )
@@ -54,20 +53,43 @@ func generateWallet() (*ecdsa.PrivateKey, *common.Address, error) {
 	return privateKey, &userAddr, nil
 }
 
-func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, []byte) {
+func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, []byte, error) {
 	data := []byte(msg)
 	hash := accounts.TextHash(data)
 
 	signature, err := crypto.Sign(hash, pk)
 	if err != nil {
-		log.Fatal(err)
+		return nil, nil, err
 	}
 
-	return signature, hash
+	return signature, hash, nil
 }
 
 func TestEOALogin(t *testing.T) {
 	conn := newConnector(t)
+	// Create and deploy eth client
+	bk := BkTest{
+		t: t,
+	}
+
+	sim, auth, ctrPk, err := bk.createMockBlockchain()
+	assert.NoError(t, err)
+
+	conn.SetEthClient(sim)
+
+	defer func(sim *backends.SimulatedBackend) {
+		err := sim.Close()
+		if err != nil {
+			assert.NoError(t, err)
+		}
+	}(sim)
+
+	ctrAddr, _, _, err := DeployContractAuth(auth, sim, auth.From)
+	assert.NoError(t, err)
+
+	sim.Commit()
+	t.Log("Contract deployed successfully to address ------", ctrAddr.Hex())
+	// end
 
 	type testCase struct {
 		address       string
@@ -94,7 +116,9 @@ func TestEOALogin(t *testing.T) {
 			}
 		},
 		"v_parameter_error_signed_message": func() testCase {
-			sigWithInvalidVParam, hash := signMessage(rawMsg, pk)
+			sigWithInvalidVParam, hash, err := signMessage(rawMsg, pk)
+			assert.NoError(t, err)
+
 			sigWithInvalidVParam[64] = 100
 
 			return testCase{
@@ -102,14 +126,16 @@ func TestEOALogin(t *testing.T) {
 				msgHash:       hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigWithInvalidVParam),
 				shouldErr:     true,
-				err:           errors.New("error occurred completing authentication, please try again"),
+				err:           errors.New("error occurred completing login no contract code at given address"), // We get this error since ERC1271 will be called when there is a mismatch
 			}
 		},
 		"error_mismatch_address": func() testCase {
 			pk2, _, err2 := generateWallet()
 			assert.NoError(t, err2)
 
-			sigMsg2, hash := signMessage(rawMsg, pk2)
+			sigMsg2, hash, err := signMessage(rawMsg, pk2)
+			assert.NoError(t, err)
+
 			sigMsg2[64] += 27
 
 			return testCase{
@@ -117,11 +143,13 @@ func TestEOALogin(t *testing.T) {
 				msgHash:       hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(sigMsg2),
 				shouldErr:     true,
-				err:           fmt.Errorf("given address and address recovered from signed nonce do not match"),
+				err:           fmt.Errorf("error occurred completing login no contract code at given address"), // We get this error since ERC1271 will be called when there is a mismatch
 			}
 		},
 		"success_verify_signature": func() testCase {
-			sigMsg, hash := signMessage(rawMsg, pk)
+			sigMsg, hash, err := signMessage(rawMsg, pk)
+			assert.NoError(t, err)
+
 			sigMsg[64] += 27
 
 			return testCase{
@@ -137,17 +165,18 @@ func TestEOALogin(t *testing.T) {
 			}
 		},
 		"erc1271_success_verify_contract_signature": func() testCase {
-			signature, hash := signMessage(rawMsg, pk)
+			signature, hash, err := signMessage(rawMsg, ctrPk)
+			assert.NoError(t, err)
 
 			return testCase{
-				address:       addr.Hex(),
+				address:       ctrAddr.Hex(),
 				msgHash:       hexutil.Encode(hash),
 				signedMessage: hexutil.Encode(signature),
 				shouldErr:     false,
 				err:           nil,
 				identity: connector.Identity{
-					UserID:   addr.Hex(),
-					Username: addr.Hex(),
+					UserID:   ctrAddr.Hex(),
+					Username: ctrAddr.Hex(),
 				},
 			}
 		},
@@ -176,7 +205,8 @@ func TestBlockchainBackend(t *testing.T) {
 	sim, auth, pk, err := bk.createMockBlockchain()
 	assert.NoError(t, err)
 
-	conn.ethClient = sim
+	conn.SetEthClient(sim)
+	// conn.ethClient = sim
 
 	defer func(sim *backends.SimulatedBackend) {
 		err := sim.Close()
@@ -194,7 +224,7 @@ func TestBlockchainBackend(t *testing.T) {
 	type testCase struct {
 		address       common.Address
 		msgHash       []byte
-		signedMessage []byte
+		signedMessage string
 		shouldErr     bool
 		err           error
 		identity      connector.Identity
@@ -206,23 +236,25 @@ func TestBlockchainBackend(t *testing.T) {
 			pk2, _, err := generateWallet()
 			assert.NoError(t, err)
 
-			sg, hash := signMessage(rawMsg, pk2)
+			sg, hash, err := signMessage(rawMsg, pk2)
+			assert.NoError(t, err)
 
 			return testCase{
 				address:       ctrAddr,
 				msgHash:       hash,
-				signedMessage: sg,
+				signedMessage: hexutil.Encode(sg),
 				shouldErr:     true,
-				err:           errors.New("given address and address recovered from signed nonce do not match"),
+				err:           errors.New("given address and address recovered from signed message do not match"),
 			}
 		},
 		"success_valid_signer": func() testCase {
-			sg, hash := signMessage(rawMsg, pk)
+			sg, hash, err := signMessage(rawMsg, pk)
+			assert.NoError(t, err)
 
 			return testCase{
 				address:       ctrAddr,
 				msgHash:       hash,
-				signedMessage: sg,
+				signedMessage: hexutil.Encode(sg),
 				shouldErr:     false,
 				err:           nil,
 				identity: connector.Identity{
@@ -238,7 +270,7 @@ func TestBlockchainBackend(t *testing.T) {
 			return testCase{
 				address:       ctrAddr,
 				msgHash:       emptyByte,
-				signedMessage: emptyByte,
+				signedMessage: hexutil.Encode(emptyByte),
 				shouldErr:     true,
 				err:           errors.New("error occurred completing authentication, please try again"),
 			}
