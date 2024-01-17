@@ -3,10 +3,9 @@ package web3
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"github.com/dexidp/dex/connector"
-	lg "github.com/dexidp/dex/pkg/log"
+	"github.com/dexidp/dex/pkg/log"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -16,10 +15,9 @@ import (
 
 type Config struct {
 	InfuraID string `json:"infuraId"`
-	RpcURL   string `json:"rpcUrl"`
 }
 
-func (c *Config) Open(id string, logger lg.Logger) (connector.Connector, error) {
+func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error) {
 	w := &web3Connector{infuraID: c.InfuraID, logger: logger}
 	return w, nil
 }
@@ -27,7 +25,7 @@ func (c *Config) Open(id string, logger lg.Logger) (connector.Connector, error) 
 type web3Connector struct {
 	infuraID  string
 	ethClient bind.ContractBackend
-	logger    lg.Logger
+	logger    log.Logger
 }
 
 func (c *web3Connector) InfuraID() string {
@@ -67,7 +65,6 @@ func (c *web3Connector) Verify(address, msg, signedMsg string) (identity connect
 	// These are byte arrays, so this is okay to do.
 	if recoveredAddr != addrb {
 		return c.VerifyERC1271Signature(addrb, msgHash, signedMsg)
-		// identity, fmt.Errorf("given address and address recovered from signed nonce do not match")
 	}
 
 	identity.UserID = address
@@ -83,7 +80,7 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 
 	if c.ethClient == nil {
 		c.logger.Errorf("Eth client was not initialized successfully %v", err)
-		return identity, errors.New("error occurred completing authentication, please try again")
+		return identity, fmt.Errorf("error occurred completing authentication, please try again %w", err)
 	}
 	var msgHash [32]byte
 	copy(msgHash[:], hash)

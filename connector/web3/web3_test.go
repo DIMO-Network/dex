@@ -206,7 +206,6 @@ func TestBlockchainBackend(t *testing.T) {
 	assert.NoError(t, err)
 
 	conn.SetEthClient(sim)
-	// conn.ethClient = sim
 
 	defer func(sim *backends.SimulatedBackend) {
 		err := sim.Close()
