@@ -409,13 +409,6 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ethClient, err := createEthClient()
-	if err != nil {
-		s.renderErrorJSON(w, http.StatusBadRequest, "Could not verify signature.")
-		return
-	}
-	w3Conn.SetEthClient(ethClient)
-
 	identity, err := w3Conn.Verify(data.Address, data.Nonce, verifyReq.Signed)
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusBadRequest, "Could not verify signature.")
@@ -471,13 +464,6 @@ func (s *Server) handleVerifyDirect(w http.ResponseWriter, r *http.Request) {
 		s.renderErrorJSON(w, http.StatusInternalServerError, "Requested resource does not exist.")
 		return
 	}
-
-	ethClient, err := createEthClient()
-	if err != nil {
-		s.renderErrorJSON(w, http.StatusBadRequest, "Could not verify signature.")
-		return
-	}
-	w3Conn.SetEthClient(ethClient)
 
 	identity, err := w3Conn.Verify(data.Address, data.Nonce, verifyReq.Signed)
 	if err != nil {

@@ -3,6 +3,7 @@ package web3
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/dexidp/dex/connector"
 	"github.com/dexidp/dex/pkg/log"
@@ -11,6 +12,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"os"
 )
 
 type Config struct {
@@ -19,6 +22,12 @@ type Config struct {
 
 func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error) {
 	w := &web3Connector{infuraID: c.InfuraID, logger: logger}
+
+	ethClient, err := createEthClient()
+	if err != nil {
+		return nil, err
+	}
+	w.ethClient = ethClient
 	return w, nil
 }
 
@@ -30,10 +39,6 @@ type web3Connector struct {
 
 func (c *web3Connector) InfuraID() string {
 	return c.infuraID
-}
-
-func (c *web3Connector) SetEthClient(ethClient bind.ContractBackend) {
-	c.ethClient = ethClient
 }
 
 // https://gist.github.com/dcb9/385631846097e1f59e3cba3b1d42f3ed#file-eth_sign_verify-go
@@ -113,4 +118,17 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 
 func signHash(data []byte) []byte {
 	return accounts.TextHash(data)
+}
+
+func createEthClient() (bind.ContractBackend, error) {
+	rpcUrl := os.Getenv("ETH_RPC_CLIENT")
+	if rpcUrl != "" {
+		client, err := ethclient.Dial(rpcUrl)
+		if err != nil {
+			return nil, err
+		}
+		return client, nil
+	}
+
+	return nil, errors.New("could not initialize eth client with url")
 }

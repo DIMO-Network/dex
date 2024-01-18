@@ -22,22 +22,11 @@ type BkTest struct {
 	t *testing.T
 }
 
-func newConnector(t *testing.T) *web3Connector {
+func newConnector() *web3Connector {
 	log := logrus.New()
 
-	testConfig := Config{
-		InfuraID: "mockInfuraID",
-	}
-
-	conn, err := testConfig.Open("id", log)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	web3Conn, ok := conn.(*web3Connector)
-	if !ok {
-		t.Fatal(err)
-	}
+	web3Conn := &web3Connector{}
+	web3Conn.logger = log
 
 	return web3Conn
 }
@@ -66,7 +55,7 @@ func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, []byte, error) {
 }
 
 func TestEOALogin(t *testing.T) {
-	conn := newConnector(t)
+	conn := newConnector()
 	// Create and deploy eth client
 	bk := BkTest{
 		t: t,
@@ -75,7 +64,7 @@ func TestEOALogin(t *testing.T) {
 	sim, auth, ctrPk, err := bk.createMockBlockchain()
 	assert.NoError(t, err)
 
-	conn.SetEthClient(sim)
+	conn.ethClient = sim
 
 	defer func(sim *backends.SimulatedBackend) {
 		err := sim.Close()
@@ -200,12 +189,12 @@ func TestBlockchainBackend(t *testing.T) {
 	bk := BkTest{
 		t: t,
 	}
-	conn := newConnector(t)
+	conn := newConnector()
 
 	sim, auth, pk, err := bk.createMockBlockchain()
 	assert.NoError(t, err)
 
-	conn.SetEthClient(sim)
+	conn.ethClient = sim
 
 	defer func(sim *backends.SimulatedBackend) {
 		err := sim.Close()
