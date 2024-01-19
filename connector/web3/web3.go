@@ -2,9 +2,8 @@
 package web3
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
+
 	"github.com/dexidp/dex/connector"
 	"github.com/dexidp/dex/pkg/log"
 	"github.com/ethereum/go-ethereum/accounts"
@@ -13,21 +12,26 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"os"
 )
 
 type Config struct {
 	InfuraID string `json:"infuraId"`
+	RPCURL   string `json:"rpcUrl"`
 }
 
 func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error) {
 	w := &web3Connector{infuraID: c.InfuraID, logger: logger}
 
-	ethClient, err := createEthClient()
-	if err != nil {
-		return nil, err
+	if c.RPCURL != "" {
+		ethClient, err := createEthClient(c.RPCURL)
+		if err != nil {
+			return nil, fmt.Errorf("error creating Ethereum client: %w", err)
+		}
+		w.ethClient = ethClient
+	} else {
+		logger.Warnf("No RPC URL specified, contract signature validation will not be available.")
 	}
-	w.ethClient = ethClient
+
 	return w, nil
 }
 
@@ -99,14 +103,12 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 		return identity, fmt.Errorf("error occurred completing login %w", err)
 	}
 
-	isValid, err := ct.IsValidSignature(&bind.CallOpts{}, msgHash, signature)
+	result, err := ct.IsValidSignature(nil, msgHash, signature)
 	if err != nil {
 		return identity, fmt.Errorf("error occurred completing login %w", err)
 	}
-	resultVal := common.BytesToAddress(isValid[:])
-	truthyVal := common.HexToAddress("0x1626ba7e")
 
-	if !bytes.Equal(truthyVal.Bytes(), resultVal.Bytes()) {
+	if result != erc1271magicValue {
 		return identity, fmt.Errorf("given address and address recovered from signed message do not match")
 	}
 
@@ -116,19 +118,12 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 	}, nil
 }
 
+var erc1271magicValue = [4]byte{0x16, 0x26, 0xba, 0x7e}
+
 func signHash(data []byte) []byte {
 	return accounts.TextHash(data)
 }
 
-func createEthClient() (bind.ContractBackend, error) {
-	rpcUrl := os.Getenv("ETH_RPC_CLIENT")
-	if rpcUrl != "" {
-		client, err := ethclient.Dial(rpcUrl)
-		if err != nil {
-			return nil, err
-		}
-		return client, nil
-	}
-
-	return nil, errors.New("could not initialize eth client with url")
+func createEthClient(rpcURL string) (bind.ContractBackend, error) {
+	return ethclient.Dial(rpcURL)
 }
