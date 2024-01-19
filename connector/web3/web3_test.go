@@ -260,7 +260,7 @@ func TestBlockchainBackend(t *testing.T) {
 				msgHash:       emptyByte,
 				signedMessage: hexutil.Encode(emptyByte),
 				shouldErr:     true,
-				err:           errors.New("error occurred completing authentication, please try again"),
+				err:           errors.New("no Ethereum client available"),
 			}
 		},
 	}
