@@ -2,6 +2,7 @@
 package web3
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/dexidp/dex/connector"
@@ -103,9 +104,9 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 	}
 
 	if c.ethClient == nil {
-		c.logger.Errorf("Eth client was not initialized successfully %v", err)
-		return identity, fmt.Errorf("error occurred completing authentication, please try again %w", err)
+		return identity, errors.New("can't attempt to validate signature, no Ethereum client available")
 	}
+
 	var msgHash [32]byte
 	copy(msgHash[:], hash)
 
@@ -120,7 +121,7 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 
 	result, err := ct.IsValidSignature(nil, msgHash, signature)
 	if err != nil {
-		return identity, fmt.Errorf("error calling isValidSignature on contract: %w", err)
+		return identity, fmt.Errorf("error occurred completing login %w", err)
 	}
 
 	if result != erc1271magicValue {

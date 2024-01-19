@@ -4,6 +4,9 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"math/big"
+	"testing"
+
 	"github.com/dexidp/dex/connector"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -14,8 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"math/big"
-	"testing"
 )
 
 type BkTest struct {
@@ -260,7 +261,7 @@ func TestBlockchainBackend(t *testing.T) {
 				msgHash:       emptyByte,
 				signedMessage: hexutil.Encode(emptyByte),
 				shouldErr:     true,
-				err:           errors.New("error occurred completing authentication, please try again"),
+				err:           errors.New("no Ethereum client available"),
 			}
 		},
 	}
