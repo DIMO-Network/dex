@@ -15,6 +15,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+var erc1271magicValue = [4]byte{0x16, 0x26, 0xba, 0x7e}
+
 type Config struct {
 	InfuraID string `json:"infuraId"`
 	RPCURL   string `json:"rpcUrl"`
@@ -59,8 +61,6 @@ func (c *web3Connector) Verify(address, msg, signedMsg string) (connector.Identi
 
 	return identity, nil
 }
-
-var erc1271magicValue = [4]byte{0x16, 0x26, 0xba, 0x7e}
 
 func (c *web3Connector) VerifyEOASignature(addr common.Address, hash []byte, signedMsg string) (identity connector.Identity, err error) {
 	signb, err := hexutil.Decode(signedMsg)
