@@ -46,15 +46,30 @@ func (c *web3Connector) InfuraID() string {
 }
 
 // https://gist.github.com/dcb9/385631846097e1f59e3cba3b1d42f3ed#file-eth_sign_verify-go
-func (c *web3Connector) Verify(address, msg, signedMsg string) (identity connector.Identity, err error) {
+func (c *web3Connector) Verify(address, msg, signedMsg string) (connector.Identity, error) {
 	addrb := common.HexToAddress(address)
 
+	msgHash := signHash([]byte(msg))
+
+	identity, err := c.VerifyEOASignature(addrb, msgHash, signedMsg)
+	if err != nil {
+		return c.VerifyERC1271Signature(addrb, msgHash, signedMsg)
+	}
+
+	return identity, nil
+}
+
+var erc1271magicValue = [4]byte{0x16, 0x26, 0xba, 0x7e}
+
+func (c *web3Connector) VerifyEOASignature(addr common.Address, hash []byte, signedMsg string) (identity connector.Identity, err error) {
 	signb, err := hexutil.Decode(signedMsg)
 	if err != nil {
 		return identity, fmt.Errorf("could not decode hex string of signed nonce: %v", err)
 	}
 
-	msgHash := signHash([]byte(msg))
+	if len(signb) != 65 {
+		return identity, fmt.Errorf("signature has length %d != 65", len(signb))
+	}
 
 	// This is the v parameter in the signature. Per the yellow paper, 27 means even and 28
 	// means odd.
@@ -62,22 +77,22 @@ func (c *web3Connector) Verify(address, msg, signedMsg string) (identity connect
 		signb[64] -= 27
 	} else if signb[64] != 0 && signb[64] != 1 {
 		// We allow 0 or 1 because some non-conformant devices like Ledger use it.
-		return c.VerifyERC1271Signature(addrb, msgHash, signedMsg)
+		return identity, fmt.Errorf("v byte was not one of 0, 1, 27, or 28")
 	}
 
-	pubKey, err := crypto.SigToPub(msgHash, signb)
+	pubKey, err := crypto.SigToPub(hash, signb)
 	if err != nil {
-		return c.VerifyERC1271Signature(addrb, msgHash, signedMsg)
+		return identity, fmt.Errorf("couldn't recover public key from hash and signature: %w", err)
 	}
 
 	recoveredAddr := crypto.PubkeyToAddress(*pubKey)
 	// These are byte arrays, so this is okay to do.
-	if recoveredAddr != addrb {
-		return c.VerifyERC1271Signature(addrb, msgHash, signedMsg)
+	if recoveredAddr != addr {
+		return identity, fmt.Errorf("hash was not signed by %s and not %s", recoveredAddr, addr)
 	}
 
-	identity.UserID = address
-	identity.Username = address
+	identity.UserID = addr.Hex()
+	identity.Username = addr.Hex()
 	return identity, nil
 }
 
@@ -105,7 +120,7 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 
 	result, err := ct.IsValidSignature(nil, msgHash, signature)
 	if err != nil {
-		return identity, fmt.Errorf("error occurred completing login %w", err)
+		return identity, fmt.Errorf("error calling isValidSignature on contract: %w", err)
 	}
 
 	if result != erc1271magicValue {
@@ -117,8 +132,6 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 		Username: contractAddress.Hex(),
 	}, nil
 }
-
-var erc1271magicValue = [4]byte{0x16, 0x26, 0xba, 0x7e}
 
 func signHash(data []byte) []byte {
 	return accounts.TextHash(data)
