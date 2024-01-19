@@ -265,7 +265,10 @@ func TestBlockchainBackend(t *testing.T) {
 		},
 	}
 
-	for name, testCase := range testCases {
+	testList := []string{"invalid_signer_error", "success_valid_signer", "no_eth_client_found"}
+	for _, name := range testList {
+		testCase := testCases[name]
+
 		t.Run(name, func(t *testing.T) {
 			tc := testCase()
 			res, err := conn.VerifyERC1271Signature(tc.address, tc.msgHash, tc.signedMessage)
