@@ -77,7 +77,7 @@ func (c *web3Connector) VerifyEOASignature(addr common.Address, hash []byte, sig
 		signb[64] -= 27
 	} else if signb[64] != 0 && signb[64] != 1 {
 		// We allow 0 or 1 because some non-conformant devices like Ledger use it.
-		return identity, fmt.Errorf("v byte was not one of 0, 1, 27, or 28")
+		return identity, fmt.Errorf("v byte %d, not one of 0, 1, 27, or 28", signb[64])
 	}
 
 	pubKey, err := crypto.SigToPub(hash, signb)
