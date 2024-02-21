@@ -10,6 +10,71 @@ Dex is an identity service that uses [OpenID Connect][openid-connect] to drive a
 
 Dex acts as a portal to other identity providers through ["connectors."](#connectors) This lets dex defer authentication to LDAP servers, SAML providers, or established identity providers like GitHub, Google, and Active Directory. Clients write their authentication logic once to talk to dex, then dex handles the protocols for a given backend.
 
+## Developer Setup
+DIMO auth services pulls from the `config` under `cluster-helm-charts/charts/dimo-dex` for both `dev` and `prod` yaml. To run this locally, follow these steps:
+
+### Step 1: Install
+```
+$ git clone https://github.com/dexidp/dex.git
+```
+
+### Step 2: Update Config
+Update the `config-dev.yaml` under the root directly with something like this (update $ configs as needed):
+
+```
+issuer: http://127.0.0.1:5556/dex
+
+frontend:
+  issuer: DIMO
+  logoURL: https://app.dev.dimo.zone/images/dimo-logo-branded.svg
+  theme: "dark"
+
+storage:
+  type: memory
+
+staticClients:
+  - id: example-app
+    redirectURIs:
+      - 'http://127.0.0.1:5555/callback'
+    name: 'Example App'
+    secret: ZXhhbXBsZS1hcHAtc2VjcmV0
+
+connectors:
+  - type: google
+    id: google
+    name: Google
+    config:
+      # Connector config values starting with a "$" will read from the environment.
+      clientID: $GOOGLE_CLIENT_ID
+      clientSecret: $GOOGLE_CLIENT_SECRET
+      # Dex's issuer URL + "/callback"
+      redirectURI: http://127.0.0.1:5556/dex/callback
+  - type: web3
+    id: web3
+    name: Web3
+    config:
+      infuraId: "2b08cc4ce251460ba1c151e58ffca1c0"
+      rpcUrl: $ETHEREUM_RPC_URL
+
+
+enablePasswordDB: true
+oauth2:
+  skipApprovalScreen: true
+
+web:
+  http: 127.0.0.1:5556
+```
+
+### Step 3: Build
+```
+make build
+```
+
+### Step 4: Start the Service
+```
+./bin/dex serve config.dev.yaml
+```
+
 ## ID Tokens
 
 ID Tokens are an OAuth2 extension introduced by OpenID Connect and dex's primary feature. ID Tokens are [JSON Web Tokens][jwt-io] (JWTs) signed by dex and returned as part of the OAuth2 response that attest to the end user's identity. An example JWT might look like:
