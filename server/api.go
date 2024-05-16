@@ -410,6 +410,7 @@ func (d dexAPI) SignToken(ctx context.Context, req *api.SignTokenReq) (*api.Sign
 		"iat": issuedAt.Unix(),
 		"exp": expiry.Unix(),
 		"iss": d.serverConfig.Issuer,
+		"aud": req.Audience,
 	}
 
 	claims := req.CustomClaims.AsMap()
