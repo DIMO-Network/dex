@@ -409,15 +409,16 @@ func (d dexAPI) GetCustomToken(ctx context.Context, req *api.SignTokenRequest) (
 		"sub": req.Subject,
 		"iat": issuedAt.Unix(),
 		"exp": expiry.Unix(),
+		"iss": d.serverConfig.Issuer,
 	}
 
-	customClaims := req.CustomClaims.AsMap()
+	claims := req.CustomClaims.AsMap()
 
 	for k, v := range baseClaims {
-		customClaims[k] = v
+		claims[k] = v
 	}
 
-	payload, err := json.Marshal(customClaims)
+	payload, err := json.Marshal(claims)
 	if err != nil {
 		return nil, fmt.Errorf("could not serialize claims: %v", err)
 	}
