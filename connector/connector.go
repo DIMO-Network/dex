@@ -104,6 +104,9 @@ type TokenIdentityConnector interface {
 	TokenIdentity(ctx context.Context, subjectTokenType, subjectToken string) (Identity, error)
 }
 
+// A Web3Connector verifies ownership of an Ethereum account.
 type Web3Connector interface {
-	A() int
+	// Verify checks that the given message was signed by the private key of the given
+	// account.
+	Verify(address, msg, signedMsg string) (identity Identity, err error)
 }
