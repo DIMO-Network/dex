@@ -69,12 +69,12 @@ func (d dexAPI) GetClient(ctx context.Context, req *api.GetClientReq) (*api.GetC
 }
 
 type vehicleIDTokenClaims struct {
-	Issuer   string   `json:"iss"`
-	Subject  string   `json:"sub"`
-	Audience audience `json:"aud,omitempty"`
-	Expiry   int64    `json:"exp"`
-	IssuedAt int64    `json:"iat"`
-	UserID   string   `json:"userId"`
+	Issuer         string   `json:"iss"`
+	Subject        string   `json:"sub"`
+	Audience       audience `json:"aud,omitempty"`
+	Expiry         int64    `json:"exp"`
+	IssuedAt       int64    `json:"iat"`
+	UserEthAddress string   `json:"userId"`
 
 	Privileges []int64 `json:"privileges,omitempty"`
 }
@@ -404,12 +404,12 @@ func (d dexAPI) RevokeRefresh(ctx context.Context, req *api.RevokeRefreshReq) (*
 func (d dexAPI) GetVehiclePrivilegeToken(ctx context.Context, req *api.GetVehiclePrivilegeTokenReq) (*api.GetVehiclePrivilegeTokenResp, error) {
 	expiry := d.serverConfig.Now().Add(time.Minute * 10) // TODO - Discuss an appropriate time
 	v := vehicleIDTokenClaims{
-		Issuer:     d.serverConfig.Issuer,
-		Subject:    req.VehicleTokenId,
-		Expiry:     expiry.Unix(),
-		IssuedAt:   d.serverConfig.Now().Unix(),
-		Privileges: req.PrivilegeIds,
-		UserID:     req.UserId,
+		Issuer:         d.serverConfig.Issuer,
+		Subject:        req.VehicleTokenId,
+		Expiry:         expiry.Unix(),
+		IssuedAt:       d.serverConfig.Now().Unix(),
+		Privileges:     req.PrivilegeIds,
+		UserEthAddress: req.UserEthAddress,
 	}
 	payload, err := json.Marshal(v)
 	if err != nil {
