@@ -401,7 +401,7 @@ func (d dexAPI) RevokeRefresh(ctx context.Context, req *api.RevokeRefreshReq) (*
 	return &api.RevokeRefreshResp{}, nil
 }
 
-func (d dexAPI) GetCustomToken(ctx context.Context, req *api.SignTokenRequest) (*api.SignTokenResp, error) {
+func (d dexAPI) GetCustomToken(ctx context.Context, req *api.SignTokenReq) (*api.SignTokenResp, error) {
 	issuedAt := d.serverConfig.Now()
 	expiry := issuedAt.Add(d.serverConfig.IDTokensValidFor)
 
@@ -414,6 +414,7 @@ func (d dexAPI) GetCustomToken(ctx context.Context, req *api.SignTokenRequest) (
 
 	claims := req.CustomClaims.AsMap()
 
+	// Base claims take priority.
 	for k, v := range baseClaims {
 		claims[k] = v
 	}
