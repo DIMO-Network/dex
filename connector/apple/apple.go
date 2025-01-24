@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,8 +14,6 @@ import (
 
 	"github.com/coreos/go-oidc"
 	"golang.org/x/oauth2"
-
-	"log/slog"
 
 	"github.com/dexidp/dex/connector"
 	"github.com/dexidp/dex/connector/apple/secret"
@@ -175,7 +174,7 @@ func (c *Config) Open(id string, logger *slog.Logger) (conn connector.Connector,
 		verifier: provider.Verifier(
 			&oidc.Config{ClientID: clientID},
 		),
-		logger:                    *logger,
+		logger:                    logger,
 		cancel:                    cancel,
 		hostedDomains:             c.HostedDomains,
 		insecureSkipEmailVerified: c.InsecureSkipEmailVerified,
@@ -203,7 +202,7 @@ type oidcConnector struct {
 	oauth2Config              *oauth2.Config
 	verifier                  *oidc.IDTokenVerifier
 	cancel                    context.CancelFunc
-	logger                    slog.Logger
+	logger                    *slog.Logger
 	hostedDomains             []string
 	insecureSkipEmailVerified bool
 	insecureEnableGroups      bool

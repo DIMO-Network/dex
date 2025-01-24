@@ -1,20 +1,21 @@
 run:
     timeout: 4m
-    skip-dirs:
+
+issues:
+    exclude-dirs:
         - storage/ent/db # generated ent code
 
 linters-settings:
     depguard:
-      rules:
-        deprecated:
-          deny:
-            - pkg: "io/ioutil"
-              desc: "The 'io/ioutil' package is deprecated. Use corresponding 'os' or 'io' functions instead."
+        rules:
+            deprecated:
+                deny:
+                    - pkg: "io/ioutil"
+                      desc: "The 'io/ioutil' package is deprecated. Use corresponding 'os' or 'io' functions instead."
     gci:
         local-prefixes: github.com/dexidp/dex
     goimports:
         local-prefixes: github.com/dexidp/dex
-
 
 linters:
     disable-all: true
@@ -22,7 +23,7 @@ linters:
         - depguard
         - dogsled
         - exhaustive
-        - exportloopref
+        - copyloopvar
         - gci
         - gochecknoinits
         - gocritic

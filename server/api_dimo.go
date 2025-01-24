@@ -10,7 +10,6 @@ import (
 
 // DIMO-specific functionality
 func (d dexAPI) SignToken(ctx context.Context, req *api.SignTokenReq) (*api.SignTokenResp, error) {
-
 	issuedAt := d.serverConfig.Now()
 	expiry := issuedAt.Add(d.serverConfig.IDTokensValidFor)
 

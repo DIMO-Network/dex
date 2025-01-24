@@ -4,6 +4,7 @@ package web3
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -11,8 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-
-	"log/slog"
 
 	"github.com/dexidp/dex/connector"
 )

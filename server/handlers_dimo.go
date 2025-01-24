@@ -78,7 +78,7 @@ func (s *Server) handleGenerateChallenge(w http.ResponseWriter, r *http.Request)
 
 	// Set the connector being used for the login.
 	if authReq.ConnectorID != "" && authReq.ConnectorID != connID {
-		s.logger.Error("Mismatched connector ID in auth request", "recieved",
+		s.logger.Error("Mismatched connector ID in auth request", "received",
 			authReq.ConnectorID, "expected", connID)
 		s.renderError(r, w, http.StatusBadRequest, "Bad connector ID")
 		return
@@ -395,7 +395,7 @@ func (s *Server) handleSubmitChallenge(w http.ResponseWriter, r *http.Request) {
 	// Need to pick up the changes made by finalizeLogin. This is pretty gross!
 	authReq, err = s.storage.GetAuthRequest(authReqID)
 	if err != nil {
-		s.logger.Error("Failed to get auth request: %v", err)
+		s.logger.Error("Failed to get auth request", "error", err)
 		s.renderError(r, w, http.StatusInternalServerError, "Database error.")
 		return
 	}
@@ -407,7 +407,7 @@ func (s *Server) handleSubmitChallenge(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.storage.DeleteAuthRequest(authReq.ID); err != nil {
 		if err != storage.ErrNotFound {
-			s.logger.Error("Failed to delete authorization request: %v", err)
+			s.logger.Error("Failed to delete authorization request", "error", err)
 			s.renderErrorJSON(w, http.StatusInternalServerError, "Internal server error.")
 		} else {
 			s.renderErrorJSON(w, http.StatusBadRequest, "User session error.")
@@ -465,8 +465,7 @@ func (s *Server) handleCreateAuthorizationRequest(w http.ResponseWriter, r *http
 
 	// Set the connector being used for the login.
 	if authReq.ConnectorID != "" && authReq.ConnectorID != connID {
-		s.logger.Error("Mismatched connector ID in auth request: %s vs %s",
-			authReq.ConnectorID, connID)
+		s.logger.Error("Mismatched connector ID in auth request", "got", authReq.ConnectorID, "expected", connID)
 		s.renderError(r, w, http.StatusBadRequest, "Bad connector ID")
 		return
 	}

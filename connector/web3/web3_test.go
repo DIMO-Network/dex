@@ -14,8 +14,9 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient/simulated"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/dexidp/dex/connector"
@@ -302,12 +303,17 @@ func (b BkTest) createMockBlockchain() (*backends.SimulatedBackend, *bind.Transa
 	balance.SetString("10000000000000000000", 10) // 10 eth in wei
 	blockGasLimit := uint64(8000029)
 
-	genesisAlloc := map[common.Address]core.GenesisAccount{
+	genesisAlloc := map[common.Address]types.Account{
 		*addr: {
 			Balance: balance,
 		},
 	}
-	sim := backends.NewSimulatedBackend(genesisAlloc, blockGasLimit)
+
+	backend := simulated.NewBackend(genesisAlloc, simulated.WithBlockGasLimit(blockGasLimit))
+	sim := &backends.SimulatedBackend{
+		Backend: backend,
+		Client:  backend.Client(),
+	}
 
 	return sim, auth, pk, nil
 }
