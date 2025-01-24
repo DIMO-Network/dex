@@ -31,14 +31,14 @@ type apiClient struct {
 }
 
 // newAPI constructs a gRCP client connected to a backing server.
-func newAPI(s storage.Storage, logger *slog.Logger, t *testing.T) *apiClient {
+func newAPI(serverConfig Config, logger *slog.Logger, t *testing.T) *apiClient {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	serv := grpc.NewServer()
-	api.RegisterDexServer(serv, NewAPI(s, logger, "test"))
+	api.RegisterDexServer(serv, NewAPI(serverConfig, logger, "test"))
 	go serv.Serve(l)
 
 	// NewClient will retry automatically if the serv.Serve() goroutine
@@ -63,7 +63,7 @@ func TestPassword(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	s := memory.New(logger)
-	client := newAPI(s, logger, t)
+	client := newAPI(Config{Storage: s}, logger, t)
 	defer client.Close()
 
 	ctx := context.Background()
@@ -172,7 +172,7 @@ func TestCheckCost(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	s := memory.New(logger)
-	client := newAPI(s, logger, t)
+	client := newAPI(Config{Storage: s}, logger, t)
 	defer client.Close()
 
 	tests := []struct {
@@ -225,7 +225,7 @@ func TestRefreshToken(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	s := memory.New(logger)
-	client := newAPI(s, logger, t)
+	client := newAPI(Config{Storage: s}, logger, t)
 	defer client.Close()
 
 	ctx := context.Background()
@@ -334,7 +334,7 @@ func TestUpdateClient(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	s := memory.New(logger)
-	client := newAPI(s, logger, t)
+	client := newAPI(Config{Storage: s}, logger, t)
 	defer client.Close()
 	ctx := context.Background()
 
@@ -500,7 +500,7 @@ func TestCreateConnector(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	s := memory.New(logger)
-	client := newAPI(s, logger, t)
+	client := newAPI(Config{Storage: s}, logger, t)
 	defer client.Close()
 
 	ctx := context.Background()
@@ -550,7 +550,7 @@ func TestUpdateConnector(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	s := memory.New(logger)
-	client := newAPI(s, logger, t)
+	client := newAPI(Config{Storage: s}, logger, t)
 	defer client.Close()
 
 	ctx := context.Background()
@@ -618,7 +618,7 @@ func TestDeleteConnector(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	s := memory.New(logger)
-	client := newAPI(s, logger, t)
+	client := newAPI(Config{Storage: s}, logger, t)
 	defer client.Close()
 
 	ctx := context.Background()
@@ -662,7 +662,7 @@ func TestListConnectors(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	s := memory.New(logger)
-	client := newAPI(s, logger, t)
+	client := newAPI(Config{Storage: s}, logger, t)
 	defer client.Close()
 
 	ctx := context.Background()
@@ -702,7 +702,7 @@ func TestMissingConnectorsCRUDFeatureFlag(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	s := memory.New(logger)
-	client := newAPI(s, logger, t)
+	client := newAPI(Config{Storage: s}, logger, t)
 	defer client.Close()
 
 	ctx := context.Background()

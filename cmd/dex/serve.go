@@ -227,6 +227,11 @@ func runServe(options serveOptions) error {
 				}
 				c.StaticClients[i].Secret = os.Getenv(client.SecretEnv)
 			}
+			if client.IDTokenExpiry != "" {
+				if _, err := time.ParseDuration(client.IDTokenExpiry); err != nil {
+					return fmt.Errorf("invalid config: IDTokenExpiry field must be a valid duration for client %q", client.ID)
+				}
+			}
 			logger.Info("config static client", "client_name", client.Name)
 		}
 		s = storage.WithStaticClients(s, c.StaticClients)
@@ -508,7 +513,7 @@ func runServe(options serveOptions) error {
 		}
 
 		grpcSrv := grpc.NewServer(grpcOptions...)
-		api.RegisterDexServer(grpcSrv, server.NewAPI(serverConfig.Storage, logger, version))
+		api.RegisterDexServer(grpcSrv, server.NewAPI(serverConfig, logger, version))
 
 		grpcMetrics.InitializeMetrics(grpcSrv)
 		if c.GRPC.Reflection {

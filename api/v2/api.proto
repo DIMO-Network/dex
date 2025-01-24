@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package api;
 
+import "google/protobuf/struct.proto";
+
 option java_package = "com.coreos.dex.api";
 option go_package = "github.com/dexidp/dex/api/v2;api";
 
@@ -221,6 +223,16 @@ message VerifyPasswordResp {
   bool not_found = 2;
 }
 
+message SignTokenResp {
+  string token = 1;
+}
+
+message SignTokenReq {
+  string subject = 1;
+  google.protobuf.Struct custom_claims = 2;
+  repeated string audience = 3;
+}
+
 // Dex represents the dex gRPC service.
 service Dex {
   // GetClient gets a client.
@@ -257,4 +269,6 @@ service Dex {
   rpc RevokeRefresh(RevokeRefreshReq) returns (RevokeRefreshResp) {};
   // VerifyPassword returns whether a password matches a hash for a specific email or not.
   rpc VerifyPassword(VerifyPasswordReq) returns (VerifyPasswordResp) {};
+  // Sign Vehicle Token takes a valid JSON that includes the userID, Id for privileges requested and vehicleID and returns a token
+  rpc SignToken(SignTokenReq) returns (SignTokenResp) {};
 }

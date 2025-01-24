@@ -254,6 +254,17 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		switch conn := conn.Connector.(type) {
+		case connector.CallbackConnectorFormPOST:
+			// Use the auth request ID as the "state" token.
+			//
+			// TODO(ericchiang): Is this appropriate or should we also be using a nonce?
+			callbackURL, err := conn.LoginURL(scopes, s.absURL("/callback"), authReq.ID)
+			if err != nil {
+				s.logger.Error("Connector returned error when creating callback", "connector", connID, "error", err)
+				s.renderError(r, w, http.StatusInternalServerError, "Login error.")
+				return
+			}
+			http.Redirect(w, r, callbackURL, http.StatusFound)
 		case connector.CallbackConnector:
 			// Use the auth request ID as the "state" token.
 			//
@@ -300,6 +311,10 @@ func (s *Server) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 				</script>
 			  </body>
 			  </html>`, action, value, authReq.ID)
+		case connector.Web3Connector:
+			challengeURL := url.URL{Path: s.absPath("/auth", connID, "challenge")}
+			verifyURL := url.URL{Path: s.absPath("/auth", connID, "verify")}
+			s.templates.web3login(r, w, challengeURL.String(), verifyURL.String(), authReq.ID, conn.InfuraID())
 		default:
 			s.renderError(r, w, http.StatusBadRequest, "Requested resource does not exist.")
 		}
@@ -410,10 +425,12 @@ func (s *Server) handleConnectorCallback(w http.ResponseWriter, r *http.Request)
 			s.renderError(r, w, http.StatusBadRequest, "User session error.")
 			return
 		}
-	case http.MethodPost: // SAML POST binding
+	case http.MethodPost: // SAML or response_mode=form_post binding
 		if authID = r.PostFormValue("RelayState"); authID == "" {
-			s.renderError(r, w, http.StatusBadRequest, "User session error.")
-			return
+			if authID = r.PostFormValue("state"); authID == "" {
+				s.renderError(r, w, http.StatusBadRequest, "User session error.")
+				return
+			}
 		}
 	default:
 		s.renderError(r, w, http.StatusBadRequest, "Method not supported")
@@ -452,6 +469,13 @@ func (s *Server) handleConnectorCallback(w http.ResponseWriter, r *http.Request)
 
 	var identity connector.Identity
 	switch conn := conn.Connector.(type) {
+	case connector.CallbackConnectorFormPOST:
+		if r.Method != http.MethodPost {
+			s.logger.Error("Invalid request mapped to response_mode=form_post OAuth2 connector")
+			s.renderError(r, w, http.StatusBadRequest, "Invalid form_post request")
+			return
+		}
+		identity, err = conn.HandlePOST(parseScopes(authReq.Scopes), r)
 	case connector.CallbackConnector:
 		if r.Method != http.MethodGet {
 			s.logger.ErrorContext(r.Context(), "SAML request mapped to OAuth2 connector")

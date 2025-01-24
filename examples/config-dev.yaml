@@ -48,6 +48,7 @@ storage:
 # Configuration for the HTTP endpoints.
 web:
   http: 0.0.0.0:5556
+  allowedOrigins: ['*']
   # Uncomment for HTTPS options.
   # https: 127.0.0.1:5554
   # tlsCert: /etc/dex/tls.crt
@@ -64,11 +65,11 @@ web:
   #   - 10.0.0.0/8
 
 # Configuration for dex appearance
-# frontend:
-#   issuer: dex
+frontend:
+  issuer: DIMO
 #   logoURL: theme/logo.png
 #   dir: web/
-#   theme: light
+  theme: dark
 
 # Configuration for telemetry
 telemetry:
@@ -77,22 +78,22 @@ telemetry:
 
 # Uncomment this block to enable the gRPC API. This values MUST be different
 # from the HTTP endpoints.
-# grpc:
-#   addr: 127.0.0.1:5557
+grpc:
+   addr: 127.0.0.1:5557
 #   tlsCert: examples/grpc-client/server.crt
 #   tlsKey: examples/grpc-client/server.key
 #   tlsClientCA: examples/grpc-client/ca.crt
 
 # Uncomment this block to enable configuration for the expiration time durations.
 # Is possible to specify units using only s, m and h suffixes.
-# expiry:
-#   deviceRequests: "5m"
-#   signingKeys: "6h"
-#   idTokens: "24h"
-#   refreshTokens:
-#     reuseInterval: "3s"
-#     validIfNotUsedFor: "2160h" # 90 days
-#     absoluteLifetime: "3960h" # 165 days
+expiry:
+  deviceRequests: "5m"
+  signingKeys: "6h"
+  idTokens: "48h"
+  refreshTokens:
+    reuseInterval: "3s"
+    validIfNotUsedFor: "2160h" # 90 days
+    absoluteLifetime: "3960h" # 165 days
 
 # Options for controlling the logger.
 # logger:
@@ -131,6 +132,12 @@ staticClients:
   - 'http://127.0.0.1:5555/callback'
   name: 'Example App'
   secret: ZXhhbXBsZS1hcHAtc2VjcmV0
+  idTokenExpiry: "12h"
+- id: IrbblpeZJRMewq8suTx0PcmHlporj6yZ
+  redirectURIs:
+  - 'http://localhost:3000'
+  name: 'Example App 2'
+  public: true
 #  - id: example-device-client
 #    redirectURIs:
 #      - /device/callback
@@ -140,6 +147,11 @@ connectors:
 - type: mockCallback
   id: mock
   name: Example
+- type: web3
+  id: web3
+  name: Web3
+#  config:
+#   infuraId: $INFURA_ID
 # - type: google
 #   id: google
 #   name: Google

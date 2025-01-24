@@ -30,6 +30,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/connector/apple"
 	"github.com/dexidp/dex/connector/atlassiancrowd"
 	"github.com/dexidp/dex/connector/authproxy"
 	"github.com/dexidp/dex/connector/bitbucketcloud"
@@ -46,6 +47,7 @@ import (
 	"github.com/dexidp/dex/connector/oidc"
 	"github.com/dexidp/dex/connector/openshift"
 	"github.com/dexidp/dex/connector/saml"
+	"github.com/dexidp/dex/connector/web3"
 	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/web"
 )
@@ -443,6 +445,12 @@ func newServer(ctx context.Context, c Config, rotationStrategy rotationStrategy)
 	handleFunc("/auth", s.handleAuthorization)
 	handleFunc("/auth/{connector}", s.handleConnectorLogin)
 	handleFunc("/auth/{connector}/login", s.handlePasswordLogin)
+	handleWithCORS("/auth/{connector}/generate_challenge", s.handleGenerateChallenge)
+	handleWithCORS("/auth/{connector}/submit_challenge", s.handleSubmitChallenge)
+	handleWithCORS("/auth/{connector}/challenge", s.handleChallenge)
+	handleWithCORS("/auth/{connector}/verify", s.handleVerify)
+	handleWithCORS("/auth/{connector}/verify_direct", s.handleVerifyDirect)
+	handleWithCORS("/auth/{connector}/init", s.handleCreateAuthorizationRequest)
 	handleFunc("/device", s.handleDeviceExchange)
 	handleFunc("/device/auth/verify_code", s.verifyUserCode)
 	handleFunc("/device/code", s.handleDeviceCode)
@@ -640,6 +648,8 @@ var ConnectorsConfig = map[string]func() ConnectorConfig{
 	"bitbucket-cloud": func() ConnectorConfig { return new(bitbucketcloud.Config) },
 	"openshift":       func() ConnectorConfig { return new(openshift.Config) },
 	"atlassian-crowd": func() ConnectorConfig { return new(atlassiancrowd.Config) },
+	"web3":            func() ConnectorConfig { return new(web3.Config) },
+	"apple":           func() ConnectorConfig { return new(apple.Config) },
 	// Keep around for backwards compatibility.
 	"samlExperimental": func() ConnectorConfig { return new(saml.Config) },
 }

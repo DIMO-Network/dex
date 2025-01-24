@@ -31,20 +31,22 @@ const (
 )
 
 // NewAPI returns a server which implements the gRPC API interface.
-func NewAPI(s storage.Storage, logger *slog.Logger, version string) api.DexServer {
+func NewAPI(serverConfig Config, logger *slog.Logger, version string) api.DexServer {
 	return dexAPI{
-		s:       s,
-		logger:  logger.With("component", "api"),
-		version: version,
+		s:            serverConfig.Storage,
+		logger:       logger.With("component", "api"),
+		version:      version,
+		serverConfig: serverConfig,
 	}
 }
 
 type dexAPI struct {
 	api.UnimplementedDexServer
 
-	s       storage.Storage
-	logger  *slog.Logger
-	version string
+	s            storage.Storage
+	logger       *slog.Logger
+	version      string
+	serverConfig Config
 }
 
 func (d dexAPI) GetClient(ctx context.Context, req *api.GetClientReq) (*api.GetClientResp, error) {
