@@ -4,6 +4,7 @@ package web3
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -13,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/dexidp/dex/connector"
-	"github.com/dexidp/dex/pkg/log"
 )
 
 type Config struct {
@@ -21,8 +21,8 @@ type Config struct {
 	RPCURL   string `json:"rpcUrl"`
 }
 
-func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error) {
-	w := &web3Connector{infuraID: c.InfuraID, logger: logger}
+func (c *Config) Open(id string, logger *slog.Logger) (connector.Connector, error) {
+	w := &web3Connector{infuraID: c.InfuraID, logger: *logger}
 	if c.RPCURL != "" {
 		ethClient, err := createEthClient(c.RPCURL)
 		if err != nil {
@@ -30,7 +30,7 @@ func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error)
 		}
 		w.ethClient = ethClient
 	} else {
-		logger.Warnf("No RPC URL specified, contract signature validation will not be available.")
+		logger.Warn("No RPC URL specified, contract signature validation will not be available.")
 	}
 
 	return w, nil
@@ -39,7 +39,7 @@ func (c *Config) Open(id string, logger log.Logger) (connector.Connector, error)
 type web3Connector struct {
 	infuraID  string
 	ethClient bind.ContractBackend
-	logger    log.Logger
+	logger    slog.Logger
 }
 
 func (c *web3Connector) InfuraID() string {
@@ -104,7 +104,7 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 	}
 
 	if c.ethClient == nil {
-		c.logger.Errorf("Eth client was not initialized successfully %v", err)
+		c.logger.Error("Eth client was not initialized successfully", "error", err)
 		return identity, errors.New("can't attempt to validate signature, no Ethereum client available")
 	}
 	var msgHash [32]byte

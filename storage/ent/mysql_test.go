@@ -1,11 +1,12 @@
 package ent
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"strconv"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dexidp/dex/storage"
@@ -30,7 +31,9 @@ func mysqlTestConfig(host string, port uint64) *MySQL {
 			Port:     uint16(port),
 		},
 		SSL: SSL{
-			Mode: mysqlSSLSkipVerify,
+			// This was originally mysqlSSLSkipVerify. It lead to handshake errors.
+			// See https://github.com/go-sql-driver/mysql/issues/1635 for more details.
+			Mode: mysqlSSLFalse,
 		},
 		params: map[string]string{
 			"innodb_lock_wait_timeout": "1",
@@ -39,11 +42,7 @@ func mysqlTestConfig(host string, port uint64) *MySQL {
 }
 
 func newMySQLStorage(host string, port uint64) storage.Storage {
-	logger := &logrus.Logger{
-		Out:       os.Stderr,
-		Formatter: &logrus.TextFormatter{DisableColors: true},
-		Level:     logrus.DebugLevel,
-	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
 
 	cfg := mysqlTestConfig(host, port)
 	s, err := cfg.Open(logger)
