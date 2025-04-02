@@ -2,8 +2,6 @@ module github.com/dexidp/dex
 
 go 1.22
 
-toolchain go1.23.5
-
 require (
 	cloud.google.com/go/compute/metadata v0.5.0
 	entgo.io/ent v0.14.0
@@ -28,7 +26,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0
 	github.com/lib/pq v1.10.9
 	github.com/mattermost/xml-roundtrip-validator v0.1.0
-	github.com/mattn/go-sqlite3 v1.14.22
+	github.com/mattn/go-sqlite3 v1.14.25
 	github.com/oklog/run v1.1.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.19.1
