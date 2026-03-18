@@ -1,6 +1,6 @@
 module github.com/dexidp/dex
 
-go 1.22
+go 1.23.0
 
 toolchain go1.23.5
 
@@ -10,7 +10,7 @@ require (
 	github.com/AppsFlyer/go-sundheit v0.6.0
 	github.com/Masterminds/semver v1.5.0
 	github.com/Masterminds/sprig/v3 v3.2.3
-	github.com/beevik/etree v1.4.0
+	github.com/beevik/etree v1.6.0
 	github.com/coreos/go-oidc v2.3.0+incompatible
 	github.com/coreos/go-oidc/v3 v3.11.0
 	github.com/dexidp/dex/api/v2 v2.1.0
@@ -32,7 +32,7 @@ require (
 	github.com/oklog/run v1.1.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.19.1
-	github.com/russellhaering/goxmldsig v1.4.0
+	github.com/russellhaering/goxmldsig v1.6.0
 	github.com/spf13/cobra v1.8.1
 	github.com/spruceid/siwe-go v0.2.1
 	github.com/stretchr/testify v1.9.0
@@ -134,7 +134,7 @@ require (
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jonboulle/clockwork v0.2.2 // indirect
+	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/mitchellh/go-wordwrap v0.0.0-20150314170334-ad45545899c7 // indirect
