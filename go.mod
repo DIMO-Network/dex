@@ -1,8 +1,6 @@
 module github.com/dexidp/dex
 
-go 1.22
-
-toolchain go1.23.5
+go 1.24.0
 
 require (
 	cloud.google.com/go/compute/metadata v0.5.0
@@ -18,7 +16,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/ghodss/yaml v1.0.0
-	github.com/go-jose/go-jose/v4 v4.0.4
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-ldap/ldap/v3 v3.4.8
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/google/uuid v1.6.0
