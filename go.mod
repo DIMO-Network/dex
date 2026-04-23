@@ -1,8 +1,6 @@
 module github.com/dexidp/dex
 
-go 1.22
-
-toolchain go1.23.5
+go 1.24
 
 require (
 	cloud.google.com/go/compute/metadata v0.5.0
@@ -100,7 +98,7 @@ require (
 	cloud.google.com/go/auth v0.7.3 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.3 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
+	github.com/Azure/go-ntlmssp v0.1.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.0 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
