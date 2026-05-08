@@ -244,6 +244,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	redirectURL, canSkipApproval, err := s.finalizeLogin(r.Context(), identity, authReq, conn)
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusInternalServerError, "Login failure.")
+		return
 	}
 
 	if canSkipApproval {
@@ -300,6 +301,7 @@ func (s *Server) handleVerifyDirect(w http.ResponseWriter, r *http.Request) {
 	_, _, err = s.finalizeLogin(r.Context(), identity, authReq, conn)
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusInternalServerError, "Login failure.")
+		return
 	}
 
 	// Need to pick up the changes made by finalizeLogin. This is pretty gross!
@@ -390,6 +392,7 @@ func (s *Server) handleSubmitChallenge(w http.ResponseWriter, r *http.Request) {
 	_, _, err = s.finalizeLogin(r.Context(), identity, authReq, conn)
 	if err != nil {
 		s.renderErrorJSON(w, http.StatusInternalServerError, "Login failure.")
+		return
 	}
 
 	// Need to pick up the changes made by finalizeLogin. This is pretty gross!
