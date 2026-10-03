@@ -291,6 +291,9 @@ type idTokenClaims struct {
 	Email           string `json:"email,omitempty"`
 	EmailVerified   *bool  `json:"email_verified,omitempty"`
 	EthereumAddress string `json:"ethereum_address,omitempty"`
+	// SignerAddress is the developer-license signer (API key) that signed the web3
+	// challenge, set on ERC-1271 developer-license logins. DIMO addition.
+	SignerAddress string `json:"signer_address,omitempty"`
 
 	Groups []string `json:"groups,omitempty"`
 
@@ -397,12 +400,13 @@ func (s *Server) newIDToken(ctx context.Context, clientID string, claims storage
 	}
 
 	tok := idTokenClaims{
-		Issuer:     s.issuerURL.String(),
-		Subject:    subjectString,
-		Nonce:      nonce,
-		Expiry:     expiry.Unix(),
-		IssuedAt:   issuedAt.Unix(),
-		ProviderID: connID,
+		Issuer:        s.issuerURL.String(),
+		Subject:       subjectString,
+		Nonce:         nonce,
+		Expiry:        expiry.Unix(),
+		IssuedAt:      issuedAt.Unix(),
+		ProviderID:    connID,
+		SignerAddress: signerAddressFromContext(ctx),
 	}
 
 	if accessToken != "" {
