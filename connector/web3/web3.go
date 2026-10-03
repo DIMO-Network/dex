@@ -2,6 +2,7 @@
 package web3
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -128,14 +129,44 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 		return identity, fmt.Errorf("given address and address recovered from signed message do not match")
 	}
 
-	return connector.Identity{
+	identity = connector.Identity{
 		UserID:   contractAddress.Hex(),
 		Username: contractAddress.Hex(),
-	}, nil
+	}
+	if signer, ok := recoverSigner(hash, signature); ok {
+		data, err := json.Marshal(connector.Web3SignerData{SignerAddress: signer.Hex()})
+		if err != nil {
+			return identity, fmt.Errorf("failed to encode signer data: %w", err)
+		}
+		identity.ConnectorData = data
+	}
+	return identity, nil
 }
 
 func signHash(data []byte) []byte {
 	return accounts.TextHash(data)
+}
+
+// recoverSigner returns the EOA behind a plain 65-byte ECDSA signature over hash, the same
+// recovery a developer license account performs before it calls isSigner. Smart-account
+// signatures (other lengths or recovery ids) report false, so those logins carry no signer.
+func recoverSigner(hash []byte, signature []byte) (common.Address, bool) {
+	if len(signature) != 65 {
+		return common.Address{}, false
+	}
+	sig := make([]byte, 65)
+	copy(sig, signature)
+	if sig[64] >= 27 {
+		sig[64] -= 27
+	}
+	if sig[64] > 1 {
+		return common.Address{}, false
+	}
+	pub, err := crypto.SigToPub(hash, sig)
+	if err != nil {
+		return common.Address{}, false
+	}
+	return crypto.PubkeyToAddress(*pub), true
 }
 
 func createEthClient(rpcURL string) (bind.ContractBackend, error) {
