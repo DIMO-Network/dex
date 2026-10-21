@@ -2,6 +2,7 @@ package web3
 
 import (
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -56,6 +57,13 @@ func signMessage(msg string, pk *ecdsa.PrivateKey) ([]byte, []byte, error) {
 	}
 
 	return signature, hash, nil
+}
+
+func signerData(t *testing.T, signer common.Address) []byte {
+	t.Helper()
+	data, err := json.Marshal(connector.Web3SignerData{SignerAddress: signer.Hex()})
+	assert.NoError(t, err)
+	return data
 }
 
 func TestEOALogin(t *testing.T) {
@@ -168,8 +176,9 @@ func TestEOALogin(t *testing.T) {
 				shouldErr:     false,
 				err:           nil,
 				identity: connector.Identity{
-					UserID:   ctrAddr.Hex(),
-					Username: ctrAddr.Hex(),
+					UserID:        ctrAddr.Hex(),
+					Username:      ctrAddr.Hex(),
+					ConnectorData: signerData(t, crypto.PubkeyToAddress(ctrPk.PublicKey)),
 				},
 			}
 		},
@@ -250,8 +259,9 @@ func TestBlockchainBackend(t *testing.T) {
 				shouldErr:     false,
 				err:           nil,
 				identity: connector.Identity{
-					UserID:   ctrAddr.Hex(),
-					Username: ctrAddr.Hex(),
+					UserID:        ctrAddr.Hex(),
+					Username:      ctrAddr.Hex(),
+					ConnectorData: signerData(t, crypto.PubkeyToAddress(pk.PublicKey)),
 				},
 			}
 		},
@@ -316,4 +326,45 @@ func (b BkTest) createMockBlockchain() (*backends.SimulatedBackend, *bind.Transa
 	}
 
 	return sim, auth, pk, nil
+}
+
+func TestRecoverSigner(t *testing.T) {
+	pk, addr, err := generateWallet()
+	assert.NoError(t, err)
+
+	sig, hash, err := signMessage("Mock Signable Message", pk)
+	assert.NoError(t, err)
+
+	withV := func(v byte) []byte {
+		s := append([]byte(nil), sig...)
+		s[64] = v
+		return s
+	}
+
+	tests := map[string]struct {
+		signature []byte
+		want      common.Address
+		ok        bool
+	}{
+		"recovery id 0 or 1":   {signature: sig, want: *addr, ok: true},
+		"recovery id 27 or 28": {signature: withV(sig[64] + 27), want: *addr, ok: true},
+		"64-byte signature":    {signature: sig[:64]},
+		"Kernel smart-account signature longer than 65 bytes": {
+			signature: append([]byte{0x01}, sig...),
+		},
+		"recovery id out of range": {signature: withV(31)},
+		"all-zero signature":       {signature: make([]byte, 65)},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			before := append([]byte(nil), tc.signature...)
+
+			got, ok := recoverSigner(hash, tc.signature)
+
+			assert.Equal(t, tc.ok, ok)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, before, tc.signature, "the caller's signature is not modified")
+		})
+	}
 }
