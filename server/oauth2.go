@@ -239,6 +239,7 @@ func (a audience) MarshalJSON() ([]byte, error) {
 
 type idTokenClaims struct {
 	Issuer           string   `json:"iss"`
+	ProviderID       string   `json:"provider_id"`
 	Subject          string   `json:"sub"`
 	Audience         audience `json:"aud"`
 	Expiry           int64    `json:"exp"`
@@ -249,8 +250,12 @@ type idTokenClaims struct {
 	AccessTokenHash string `json:"at_hash,omitempty"`
 	CodeHash        string `json:"c_hash,omitempty"`
 
-	Email         string `json:"email,omitempty"`
-	EmailVerified *bool  `json:"email_verified,omitempty"`
+	Email           string `json:"email,omitempty"`
+	EmailVerified   *bool  `json:"email_verified,omitempty"`
+	EthereumAddress string `json:"ethereum_address,omitempty"`
+	// SignerAddress is the developer-license signer (API key) that signed the web3
+	// challenge, set on ERC-1271 developer-license logins. DIMO addition.
+	SignerAddress string `json:"signer_address,omitempty"`
 
 	Groups []string `json:"groups,omitempty"`
 
@@ -314,7 +319,26 @@ func genSubject(userID string, connID string) (string, error) {
 
 func (s *Server) newIDToken(ctx context.Context, clientID string, claims storage.Claims, scopes []string, nonce, accessToken, code, connID string) (idToken string, expiry time.Time, err error) {
 	issuedAt := s.now()
-	expiry = issuedAt.Add(s.idTokensValidFor)
+
+	client, err := s.storage.GetClient(ctx, clientID)
+	if err != nil {
+		return "", expiry, err
+	}
+
+	validFor := s.idTokensValidFor
+
+	if client.IDTokenExpiry != "" {
+		switch clientValidFor, err := time.ParseDuration(client.IDTokenExpiry); {
+		case err != nil:
+			s.logger.Error("Client custom ID token expiry not a valid duration, this should never happen; using global", "clientID", clientID, "IDExpiry", client.IDTokenExpiry, "globalExpiry", s.idTokensValidFor)
+		case clientValidFor > s.idTokensValidFor:
+			s.logger.Error("Client custom ID token expiry longer than the global setting; using the latter", "clientID", clientID, "IDExpiry", client.IDTokenExpiry, "globalExpiry", s.idTokensValidFor)
+		default:
+			validFor = clientValidFor
+		}
+	}
+
+	expiry = issuedAt.Add(validFor)
 
 	subjectString, err := genSubject(claims.UserID, connID)
 	if err != nil {
@@ -323,11 +347,13 @@ func (s *Server) newIDToken(ctx context.Context, clientID string, claims storage
 	}
 
 	tok := idTokenClaims{
-		Issuer:   s.issuerURL.String(),
-		Subject:  subjectString,
-		Nonce:    nonce,
-		Expiry:   expiry.Unix(),
-		IssuedAt: issuedAt.Unix(),
+		Issuer:        s.issuerURL.String(),
+		Subject:       subjectString,
+		Nonce:         nonce,
+		Expiry:        expiry.Unix(),
+		IssuedAt:      issuedAt.Unix(),
+		ProviderID:    connID,
+		SignerAddress: signerAddressFromContext(ctx),
 	}
 
 	// Determine signing algorithm from signer
@@ -360,6 +386,10 @@ func (s *Server) newIDToken(ctx context.Context, clientID string, claims storage
 		case scope == scopeEmail:
 			tok.Email = claims.Email
 			tok.EmailVerified = &claims.EmailVerified
+			// This is a hack
+			if addressRegex.MatchString(claims.UserID) {
+				tok.EthereumAddress = claims.UserID
+			}
 		case scope == scopeGroups:
 			tok.Groups = claims.Groups
 		case scope == scopeProfile:
