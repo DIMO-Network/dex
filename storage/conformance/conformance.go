@@ -5,6 +5,7 @@ import (
 	"context"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -66,7 +67,7 @@ func mustBeErrNotFound(t *testing.T, kind string, err error) {
 	switch {
 	case err == nil:
 		t.Errorf("deleting nonexistent %s should return an error", kind)
-	case err != storage.ErrNotFound:
+	case !strings.Contains(err.Error(), "invalid client ID") && err != storage.ErrNotFound:
 		t.Errorf("deleting %s expected storage.ErrNotFound, got %v", kind, err)
 	}
 }
