@@ -48,6 +48,7 @@ storage:
 # Configuration for the HTTP endpoints.
 web:
   http: 0.0.0.0:5556
+  allowedOrigins: ['*']
   # Uncomment for HTTPS options.
   # https: 127.0.0.1:5554
   # tlsCert: /etc/dex/tls.crt
@@ -82,12 +83,12 @@ web:
   # - CurveP256
 
 # Configuration for dex appearance
-# frontend:
-#   issuer: dex
+frontend:
+  issuer: DIMO
 #   logoURL: theme/logo.png
 #   dir: web/
 #   Allowed values: light, dark
-#   theme: light
+  theme: dark
 
 # Configuration for telemetry
 telemetry:
@@ -104,14 +105,14 @@ grpc:
 
 # Uncomment this block to enable configuration for the expiration time durations.
 # Is possible to specify units using only s, m and h suffixes.
-# expiry:
-#   deviceRequests: "5m"
-#   signingKeys: "6h" # deprecated, use signer.config.keysRotationPeriod
-#   idTokens: "24h"
-#   refreshTokens:
-#     reuseInterval: "3s"
-#     validIfNotUsedFor: "2160h" # 90 days
-#     absoluteLifetime: "3960h" # 165 days
+expiry:
+  deviceRequests: "5m"
+  signingKeys: "6h" # deprecated, use signer.config.keysRotationPeriod
+  idTokens: "48h"
+  refreshTokens:
+    reuseInterval: "3s"
+    validIfNotUsedFor: "2160h" # 90 days
+    absoluteLifetime: "3960h" # 165 days
 
 # Authentication sessions configuration.
 # Requires DEX_SESSIONS_ENABLED=true feature flag.
@@ -240,6 +241,12 @@ staticClients:
   # If omitted, ssoSharedWithDefault from sessions config is used.
   # ssoSharedWith:
   # - "*"
+  idTokenExpiry: "12h"
+- id: IrbblpeZJRMewq8suTx0PcmHlporj6yZ
+  redirectURIs:
+  - 'http://localhost:3000'
+  name: 'Example App 2'
+  public: true
 
 # Example using environment variables
 # Set DEX_CLIENT_ID and DEX_SECURE_CLIENT_SECRET before starting Dex
@@ -271,6 +278,11 @@ connectors:
 #  grantTypes:
 #  - "authorization_code"
 #  - "refresh_token"
+- type: web3
+  id: web3
+  name: Web3
+#  config:
+#   infuraId: $INFURA_ID
 # - type: google
 #   id: google
 #   name: Google
