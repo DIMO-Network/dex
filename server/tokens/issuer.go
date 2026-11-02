@@ -93,7 +93,11 @@ func (i *Issuer) SignAccessToken(ctx context.Context, auth Authorization) (strin
 // at_hash/c_hash.
 func (i *Issuer) SignIDToken(ctx context.Context, auth Authorization, accessToken, code string) (string, time.Time, error) {
 	issuedAt := i.now()
-	expiry := issuedAt.Add(i.idTokensValidFor)
+	validFor, err := i.clientTokenLifetime(ctx, auth.Client.ID)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("failed to get client: %v", err)
+	}
+	expiry := issuedAt.Add(validFor)
 
 	subjectString, err := GenSubject(auth.Claims.UserID, auth.ConnectorID)
 	if err != nil {
@@ -115,6 +119,7 @@ func (i *Issuer) SignIDToken(ctx context.Context, auth Authorization, accessToke
 	}
 
 	tok.SessionID = auth.SessionID
+	applyDIMOClaims(&tok, auth)
 
 	signingAlg, err := i.signer.Algorithm(ctx)
 	if err != nil {

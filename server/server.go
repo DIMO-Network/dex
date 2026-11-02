@@ -233,20 +233,22 @@ func (s *Server) mount(routes router.Mux, c Config, rc resolvedConfig) {
 	// rest.
 	sessions := s.sessions
 
+	tokenEndpoint := &grants.Handler{
+		Issuer:              s.issuer,
+		Storage:             s.storage,
+		Connectors:          s.connectors,
+		Now:                 rc.now,
+		Logger:              s.logger,
+		PasswordConnector:   c.PasswordConnector,
+		RefreshPolicy:       c.RefreshTokenPolicy,
+		Sessions:            sessions,
+		SessionsEnabled:     c.SessionConfig != nil,
+		SupportedGrantTypes: rc.grantTypes,
+	}
+
 	for _, h := range []router.Handler{
 		s.discovery,
-		&grants.Handler{
-			Issuer:              s.issuer,
-			Storage:             s.storage,
-			Connectors:          s.connectors,
-			Now:                 rc.now,
-			Logger:              s.logger,
-			PasswordConnector:   c.PasswordConnector,
-			RefreshPolicy:       c.RefreshTokenPolicy,
-			Sessions:            sessions,
-			SessionsEnabled:     c.SessionConfig != nil,
-			SupportedGrantTypes: rc.grantTypes,
-		},
+		tokenEndpoint,
 		&userinfo.Handler{
 			Issuer: s.issuerURL.String(),
 			Signer: c.Signer,
@@ -294,6 +296,7 @@ func (s *Server) mount(routes router.Mux, c Config, rc resolvedConfig) {
 			MFAEnabled:             len(c.MFAProviders) > 0,
 			DefaultMFAChain:        c.DefaultMFAChain,
 			SkipApproval:           c.SkipApprovalScreen,
+			TokenEndpoint:          tokenEndpoint.ServeToken,
 		},
 		&mfa.Handler{
 			Storage:         s.storage,

@@ -43,6 +43,7 @@ var requiredTmpls = []string{
 	tmplWebAuthnVerify,
 	tmplHome,
 	tmplLogout,
+	tmplWeb3,
 }
 
 type Templates struct {
@@ -57,6 +58,7 @@ type Templates struct {
 	webauthnVerifyTmpl *template.Template
 	homeTmpl           *template.Template
 	logoutTmpl         *template.Template
+	web3Tmpl           *template.Template
 }
 
 type Config struct {
@@ -188,6 +190,7 @@ func loadTemplates(c Config, templatesDir string) (*Templates, error) {
 		webauthnVerifyTmpl: tmpls.Lookup(tmplWebAuthnVerify),
 		homeTmpl:           tmpls.Lookup(tmplHome),
 		logoutTmpl:         tmpls.Lookup(tmplLogout),
+		web3Tmpl:           tmpls.Lookup(tmplWeb3),
 	}, nil
 }
 

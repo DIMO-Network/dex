@@ -48,6 +48,8 @@ type Handler struct {
 	DefaultMFAChain []string
 	// SkipApproval disables the consent screen server-wide (see consent.Satisfied).
 	SkipApproval bool
+	// TokenEndpoint serves a token request; DIMO's submit_challenge ends in one.
+	TokenEndpoint http.HandlerFunc
 }
 
 // Mount registers the login routes. The /auth endpoint is both the entry
@@ -65,6 +67,7 @@ func (h *Handler) Mount(m router.Mux) {
 		h.handleConnectorCallback(w, r)
 	})
 	m.HandleFunc("/callback/{connector}", h.handleConnectorCallback)
+	h.mountDIMO(m)
 }
 
 // stripRemoteHeaders drops the X-Remote-* request headers the authproxy

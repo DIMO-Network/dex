@@ -185,6 +185,13 @@ type Client struct {
 	// session that issued them. See the constants below; empty means Standalone.
 	RefreshTokenLifetime string `json:"refreshTokenLifetime"`
 
+	// IDTokenExpiry overrides the global expiration length for id tokens. Note that this can only
+	// be less than the global setting. This lets us keep the public key rotation up-to-date for
+	// free.
+	//
+	// We do not store this in the database, it only works for static clients.
+	IDTokenExpiry string `json:"idTokenExpiry" yaml:"idTokenExpiry"`
+
 	// TrustedPeers are a list of peers which can issue tokens on this client's behalf using
 	// the dynamic "oauth2:server:client_id:(client_id)" scope. If a peer makes such a request,
 	// this client's ID will appear as the ID Token's audience.

@@ -88,6 +88,8 @@ type IDTokenClaims struct {
 	PreferredUsername string `json:"preferred_username,omitempty"`
 
 	FederatedIDClaims *FederatedIDClaims `json:"federated_claims,omitempty"`
+
+	DIMOClaims
 }
 
 // FederatedIDClaims carries the upstream connector's identity for the

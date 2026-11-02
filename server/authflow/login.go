@@ -158,6 +158,8 @@ func (h *Handler) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		switch conn := conn.Connector.(type) {
+		case connector.CallbackConnectorFormPOST:
+			h.startFormPOSTLogin(w, r, conn, scopes, connID, authReq.ID)
 		case connector.CallbackConnector:
 			// Use the auth request ID as the "state" token.
 			//
@@ -216,6 +218,8 @@ func (h *Handler) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 				</script>
 			  </body>
 			  </html>`, action, value, authReq.ID)
+		case connector.Web3Connector:
+			h.renderWeb3Login(w, r, conn, connID, authReq.ID)
 		default:
 			h.renderError(r, w, http.StatusBadRequest, "Requested resource does not exist.")
 		}

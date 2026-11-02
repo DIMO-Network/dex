@@ -1,66 +1,90 @@
+@font-face {
+    font-family: 'Euclid';
+    src: url('../static/EuclidCircularA-Regular.otf') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+}
+
 .theme-body {
-  background-color: #131519;
-  color: #b8bcc4;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background-color: #000000;
+    color: #ffffff;
+    font-family: 'Euclid', 'Source Sans Pro', Helvetica, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    flex-direction: column;
 }
 
-.theme-navbar {
-  background-color: #1a1d23;
-  border-bottom: 1px solid #2a2d35;
-  color: #b8bcc4;
-  font-size: 13px;
-  font-weight: 400;
-  height: 52px;
-  overflow: hidden;
-  padding: 0 16px;
-}
-
-.theme-navbar__logo-wrap {
-  display: inline-block;
-  height: 100%;
-  overflow: hidden;
-  padding: 12px 15px;
-  width: 300px;
-}
-
-.theme-navbar__logo {
-  height: 100%;
-  max-height: 26px;
+/* Logo */
+.dimo-logo {
+    width: 100px;
+    margin-bottom: 20px;
 }
 
 .theme-heading {
-  color: #dcdfe5;
-  font-size: 20px;
-  font-weight: 600;
-  margin-bottom: 16px;
-  margin-top: 0;
+    font-size: 48px;
+    font-weight: 500;
+    margin: 30px 0;
+    color: #ffffff;
+    text-align: center;
+    white-space: pre-wrap;
+    line-height: 1.2;
 }
+
 
 .theme-panel {
-  background-color: #1a1d23;
-  border: 1px solid #2a2d35;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-  padding: 32px;
+    background-color: transparent;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 30px;
 }
 
-/* A width rather than a minimum: the button has to be the same size whatever
- * the connector is called, and it has to give way on a screen too narrow to
- * hold it rather than push out of the panel. */
 .theme-btn-provider {
-  background-color: #22252c;
-  border: 1px solid #33363e;
-  color: #b8bcc4;
-  max-width: 100%;
-  width: 260px;
+    background-color: #333333;
+    color: #ffffff;
+    border: none;
+    width: 300px;
+    height: 50px;
+    padding: 0 20px;
+    border-radius: 25px;
+    font-size: 14px;
+    font-family: 'Euclid', 'Source Sans Pro', Helvetica, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 5px 0;
+    text-align: center;
+    box-shadow: none;
 }
 
 .theme-btn-provider:hover {
-  background-color: #2a2d35;
-  border-color: #3e414a;
-  color: #dcdfe5;
+    background-color: #3a3a3a;
+    color: #ffffff;
 }
 
+/* Provider icons sit directly on the button, without main.css's coloured tile. */
+.theme-btn-provider .dex-btn-icon {
+    background-color: transparent;
+    background-size: 24px;
+    margin: 0 10px 0 0;
+}
+
+.theme-btn-provider .dex-btn-icon--web3 {
+    background-size: contain;
+}
+
+.theme-form-row {
+    display: flex;
+    justify-content: center;
+    margin: 5px 0;
+}
+
+/* The rules below are upstream's dark theme, kept for the pages DIMO doesn't
+ * restyle: password, approval, device, home, logout and MFA. */
 .theme-btn--primary {
   background-color: #3d3f47;
   border: none;
@@ -82,11 +106,6 @@
 
 .theme-btn--success:hover {
   background-color: #358fae;
-}
-
-.theme-form-row {
-  display: block;
-  margin: 16px auto;
 }
 
 .theme-form-input {
