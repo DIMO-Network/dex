@@ -277,8 +277,9 @@ func (c *dexClient) VerifyPassword(ctx context.Context, in *VerifyPasswordReq, o
 }
 
 func (c *dexClient) SignToken(ctx context.Context, in *SignTokenReq, opts ...grpc.CallOption) (*SignTokenResp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SignTokenResp)
-	err := c.cc.Invoke(ctx, Dex_SignToken_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Dex_SignToken_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
