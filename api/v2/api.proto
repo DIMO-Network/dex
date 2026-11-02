@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package api;
 
+import "google/protobuf/struct.proto";
+
 option java_package = "com.coreos.dex.api";
 option go_package = "github.com/dexidp/dex/api/v2;api";
 
@@ -534,6 +536,16 @@ message RevokeConsentResp {
   bool not_found = 1;
 }
 
+message SignTokenResp {
+  string token = 1;
+}
+
+message SignTokenReq {
+  string subject = 1;
+  google.protobuf.Struct custom_claims = 2;
+  repeated string audience = 3;
+}
+
 // Dex represents the dex gRPC service.
 service Dex {
   // GetClient gets a client.
@@ -601,4 +613,6 @@ service Dex {
   rpc DeleteMFASecret(DeleteMFASecretReq) returns (DeleteMFASecretResp) {};
   // RevokeConsent revokes consent for a specific client.
   rpc RevokeConsent(RevokeConsentReq) returns (RevokeConsentResp) {};
+  // Sign Vehicle Token takes a valid JSON that includes the userID, Id for privileges requested and vehicleID and returns a token
+  rpc SignToken(SignTokenReq) returns (SignTokenResp) {};
 }
