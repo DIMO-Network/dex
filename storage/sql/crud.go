@@ -1,14 +1,20 @@
 package sql
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/dexidp/dex/storage"
 )
@@ -579,12 +585,152 @@ func (c *conn) CreateClient(ctx context.Context, cli storage.Client) error {
 	return nil
 }
 
+// getDeveloperClient retrieves a developer client from the GraphQL API using the provided client ID.
+//
+// Parameters:
+// - clientID: A string representing the Ethereum address of the client.
+//
+// Returns:
+// - A storage.Client object containing the client details, including redirect URIs.
+// - An error if the client ID is invalid, the API request fails, or the response contains errors.
+func getDeveloperClient(clientID string) (cli storage.Client, err error) {
+	// Validate the client ID as a mixed-case Ethereum address.
+	mca, err := common.NewMixedcaseAddressFromString(clientID)
+	if err != nil {
+		return cli, fmt.Errorf("invalid client ID: %s %w", clientID, err)
+	}
+
+	if !mca.ValidChecksum() {
+		return cli, fmt.Errorf("address not checksummed")
+	}
+
+	// TODO(elffjs): Handle the case of more than 100 redirects.
+	// Maybe a new, singular "redirectURI" subquery?
+	q := `
+	query describeLicense($clientId: Address!) {
+		developerLicense(by: {clientId: $clientId}) {
+			redirectURIs(first: 100) { 
+				nodes {
+					uri
+				}
+			}
+		}
+	}
+	`
+
+	m := map[string]any{
+		"query": q,
+		"variables": map[string]any{
+			"clientId": clientID,
+		},
+	}
+
+	type Resp struct {
+		Data *struct {
+			DeveloperLicense struct {
+				RedirectURIs struct {
+					Nodes []struct {
+						URI string `json:"uri"`
+					} `json:"nodes"`
+				} `json:"redirectURIs"`
+			} `json:"developerLicense"`
+		} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+
+	// Serialize the GraphQL request payload.
+	req, err := json.Marshal(m)
+	if err != nil {
+		return cli, fmt.Errorf("failed to marshal GraphQL request: %w", err)
+	}
+
+	// Load the GraphQL endpoint from configuration.
+	endpoint := os.Getenv("IDENTITY_API_URL")
+
+	// Check if the environment variable is set
+	if endpoint == "" {
+		return cli, fmt.Errorf("environment variable IDENTITY_API_URL is not set")
+	}
+	res, err := sendGraphQLRequestWithRetries(endpoint, req, 3, 1*time.Second)
+	if err != nil {
+		return cli, fmt.Errorf("failed to send GraphQL request: %w", err)
+	}
+	defer res.Body.Close()
+
+	// Check the HTTP status code.
+	if res.StatusCode != http.StatusOK {
+		return cli, fmt.Errorf("unexpected HTTP status: %d", res.StatusCode)
+	}
+
+	resBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		return cli, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	var r Resp
+	err = json.Unmarshal(resBody, &r)
+	if err != nil {
+		return cli, fmt.Errorf("failed to unmarshal GraphQL response: %w", err)
+	}
+
+	if len(r.Errors) > 0 {
+		return cli, fmt.Errorf("GraphQL error: %s", r.Errors[0].Message)
+	}
+
+	// Handle cases where the GraphQL response indicates missing data.
+	if r.Data == nil || r.Data.DeveloperLicense.RedirectURIs.Nodes == nil {
+		return cli, fmt.Errorf("developer license not found for client ID: %s", clientID)
+	}
+
+	// Extract redirect URIs from the response.
+	uris := make([]string, len(r.Data.DeveloperLicense.RedirectURIs.Nodes))
+	for i, u := range r.Data.DeveloperLicense.RedirectURIs.Nodes {
+		uris[i] = u.URI
+	}
+
+	return storage.Client{
+		ID:           clientID,
+		RedirectURIs: uris,
+		Public:       true,
+	}, nil
+}
+
+func sendGraphQLRequestWithRetries(endpoint string, reqBody []byte, maxRetries int, backoff time.Duration) (*http.Response, error) {
+	var res *http.Response
+	var err error
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		res, err = http.Post(endpoint, "application/json", bytes.NewBuffer(reqBody))
+		if err == nil {
+			return res, nil
+		}
+
+		// Retry if the maximum retries are not reached
+		if attempt < maxRetries {
+			// Wait before retrying
+			time.Sleep(backoff)
+			// Exponential backoff
+			backoff *= 2
+		} else {
+			break
+		}
+	}
+
+	return nil, fmt.Errorf("failed to send GraphQL request after %d retries: %w", maxRetries, err)
+}
+
 func getClient(ctx context.Context, q querier, id string) (storage.Client, error) {
-	return scanClient(q.QueryRow(`
+	client, err := scanClient(q.QueryRow(`
 		select
 			id, secret, redirect_uris, trusted_peers, public, name, logo_url, allowed_connectors, mfa_chain, post_logout_redirect_uris, sso_shared_with, backchannel_logout_uri, refresh_token_lifetime
 	    from client where id = $1;
 	`, id))
+	if err == storage.ErrNotFound {
+		return getDeveloperClient(id)
+	}
+	return client, err
 }
 
 func (c *conn) GetClient(ctx context.Context, id string) (storage.Client, error) {
