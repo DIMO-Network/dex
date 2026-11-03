@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -52,7 +51,7 @@ func testSetup() *httptest.Server {
 }
 
 func newConnector(config *Config) (*googleConnector, error) {
-	log := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	log := slog.New(slog.DiscardHandler)
 	conn, err := config.Open("id", log)
 	if err != nil {
 		return nil, err
@@ -155,6 +154,7 @@ func TestOpen(t *testing.T) {
 			expectedErr: "",
 		},
 	} {
+		reference := reference
 		t.Run(name, func(t *testing.T) {
 			assert := assert.New(t)
 
@@ -223,6 +223,7 @@ func TestGetGroups(t *testing.T) {
 			expectedGroups:                 []string{"groups_0@dexidp.com", "groups_1@dexidp.com"},
 		},
 	} {
+		testCase := testCase
 		callCounter = map[string]int{}
 		t.Run(name, func(t *testing.T) {
 			assert := assert.New(t)
@@ -278,6 +279,7 @@ func TestDomainToAdminEmailConfig(t *testing.T) {
 			expectedErr: "unable to find super admin email",
 		},
 	} {
+		testCase := testCase
 		callCounter = map[string]int{}
 		t.Run(name, func(t *testing.T) {
 			assert := assert.New(t)
@@ -437,7 +439,7 @@ func TestPromptTypeConfig(t *testing.T) {
 			assert.Nil(t, err)
 			assert.Equal(t, test.expectedPromptTypeValue, conn.promptType)
 
-			loginURL, err := conn.LoginURL(connector.Scopes{OfflineAccess: true}, ts.URL+"/callback", "state")
+			loginURL, _, err := conn.LoginURL(connector.Scopes{OfflineAccess: true}, ts.URL+"/callback", "state")
 			assert.Nil(t, err)
 
 			urlp, err := url.Parse(loginURL)

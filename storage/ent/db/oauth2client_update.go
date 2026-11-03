@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
+	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/ent/db/oauth2client"
 	"github.com/dexidp/dex/storage/ent/db/predicate"
 )
@@ -23,116 +24,240 @@ type OAuth2ClientUpdate struct {
 }
 
 // Where appends a list predicates to the OAuth2ClientUpdate builder.
-func (ou *OAuth2ClientUpdate) Where(ps ...predicate.OAuth2Client) *OAuth2ClientUpdate {
-	ou.mutation.Where(ps...)
-	return ou
+func (_u *OAuth2ClientUpdate) Where(ps ...predicate.OAuth2Client) *OAuth2ClientUpdate {
+	_u.mutation.Where(ps...)
+	return _u
 }
 
 // SetSecret sets the "secret" field.
-func (ou *OAuth2ClientUpdate) SetSecret(s string) *OAuth2ClientUpdate {
-	ou.mutation.SetSecret(s)
-	return ou
+func (_u *OAuth2ClientUpdate) SetSecret(v string) *OAuth2ClientUpdate {
+	_u.mutation.SetSecret(v)
+	return _u
 }
 
 // SetNillableSecret sets the "secret" field if the given value is not nil.
-func (ou *OAuth2ClientUpdate) SetNillableSecret(s *string) *OAuth2ClientUpdate {
-	if s != nil {
-		ou.SetSecret(*s)
+func (_u *OAuth2ClientUpdate) SetNillableSecret(v *string) *OAuth2ClientUpdate {
+	if v != nil {
+		_u.SetSecret(*v)
 	}
-	return ou
+	return _u
 }
 
 // SetRedirectUris sets the "redirect_uris" field.
-func (ou *OAuth2ClientUpdate) SetRedirectUris(s []string) *OAuth2ClientUpdate {
-	ou.mutation.SetRedirectUris(s)
-	return ou
+func (_u *OAuth2ClientUpdate) SetRedirectUris(v []string) *OAuth2ClientUpdate {
+	_u.mutation.SetRedirectUris(v)
+	return _u
 }
 
-// AppendRedirectUris appends s to the "redirect_uris" field.
-func (ou *OAuth2ClientUpdate) AppendRedirectUris(s []string) *OAuth2ClientUpdate {
-	ou.mutation.AppendRedirectUris(s)
-	return ou
+// AppendRedirectUris appends value to the "redirect_uris" field.
+func (_u *OAuth2ClientUpdate) AppendRedirectUris(v []string) *OAuth2ClientUpdate {
+	_u.mutation.AppendRedirectUris(v)
+	return _u
 }
 
 // ClearRedirectUris clears the value of the "redirect_uris" field.
-func (ou *OAuth2ClientUpdate) ClearRedirectUris() *OAuth2ClientUpdate {
-	ou.mutation.ClearRedirectUris()
-	return ou
+func (_u *OAuth2ClientUpdate) ClearRedirectUris() *OAuth2ClientUpdate {
+	_u.mutation.ClearRedirectUris()
+	return _u
 }
 
 // SetTrustedPeers sets the "trusted_peers" field.
-func (ou *OAuth2ClientUpdate) SetTrustedPeers(s []string) *OAuth2ClientUpdate {
-	ou.mutation.SetTrustedPeers(s)
-	return ou
+func (_u *OAuth2ClientUpdate) SetTrustedPeers(v []string) *OAuth2ClientUpdate {
+	_u.mutation.SetTrustedPeers(v)
+	return _u
 }
 
-// AppendTrustedPeers appends s to the "trusted_peers" field.
-func (ou *OAuth2ClientUpdate) AppendTrustedPeers(s []string) *OAuth2ClientUpdate {
-	ou.mutation.AppendTrustedPeers(s)
-	return ou
+// AppendTrustedPeers appends value to the "trusted_peers" field.
+func (_u *OAuth2ClientUpdate) AppendTrustedPeers(v []string) *OAuth2ClientUpdate {
+	_u.mutation.AppendTrustedPeers(v)
+	return _u
 }
 
 // ClearTrustedPeers clears the value of the "trusted_peers" field.
-func (ou *OAuth2ClientUpdate) ClearTrustedPeers() *OAuth2ClientUpdate {
-	ou.mutation.ClearTrustedPeers()
-	return ou
+func (_u *OAuth2ClientUpdate) ClearTrustedPeers() *OAuth2ClientUpdate {
+	_u.mutation.ClearTrustedPeers()
+	return _u
 }
 
 // SetPublic sets the "public" field.
-func (ou *OAuth2ClientUpdate) SetPublic(b bool) *OAuth2ClientUpdate {
-	ou.mutation.SetPublic(b)
-	return ou
+func (_u *OAuth2ClientUpdate) SetPublic(v bool) *OAuth2ClientUpdate {
+	_u.mutation.SetPublic(v)
+	return _u
 }
 
 // SetNillablePublic sets the "public" field if the given value is not nil.
-func (ou *OAuth2ClientUpdate) SetNillablePublic(b *bool) *OAuth2ClientUpdate {
-	if b != nil {
-		ou.SetPublic(*b)
+func (_u *OAuth2ClientUpdate) SetNillablePublic(v *bool) *OAuth2ClientUpdate {
+	if v != nil {
+		_u.SetPublic(*v)
 	}
-	return ou
+	return _u
 }
 
 // SetName sets the "name" field.
-func (ou *OAuth2ClientUpdate) SetName(s string) *OAuth2ClientUpdate {
-	ou.mutation.SetName(s)
-	return ou
+func (_u *OAuth2ClientUpdate) SetName(v string) *OAuth2ClientUpdate {
+	_u.mutation.SetName(v)
+	return _u
 }
 
 // SetNillableName sets the "name" field if the given value is not nil.
-func (ou *OAuth2ClientUpdate) SetNillableName(s *string) *OAuth2ClientUpdate {
-	if s != nil {
-		ou.SetName(*s)
+func (_u *OAuth2ClientUpdate) SetNillableName(v *string) *OAuth2ClientUpdate {
+	if v != nil {
+		_u.SetName(*v)
 	}
-	return ou
+	return _u
 }
 
 // SetLogoURL sets the "logo_url" field.
-func (ou *OAuth2ClientUpdate) SetLogoURL(s string) *OAuth2ClientUpdate {
-	ou.mutation.SetLogoURL(s)
-	return ou
+func (_u *OAuth2ClientUpdate) SetLogoURL(v string) *OAuth2ClientUpdate {
+	_u.mutation.SetLogoURL(v)
+	return _u
 }
 
 // SetNillableLogoURL sets the "logo_url" field if the given value is not nil.
-func (ou *OAuth2ClientUpdate) SetNillableLogoURL(s *string) *OAuth2ClientUpdate {
-	if s != nil {
-		ou.SetLogoURL(*s)
+func (_u *OAuth2ClientUpdate) SetNillableLogoURL(v *string) *OAuth2ClientUpdate {
+	if v != nil {
+		_u.SetLogoURL(*v)
 	}
-	return ou
+	return _u
+}
+
+// SetAllowedConnectors sets the "allowed_connectors" field.
+func (_u *OAuth2ClientUpdate) SetAllowedConnectors(v []string) *OAuth2ClientUpdate {
+	_u.mutation.SetAllowedConnectors(v)
+	return _u
+}
+
+// AppendAllowedConnectors appends value to the "allowed_connectors" field.
+func (_u *OAuth2ClientUpdate) AppendAllowedConnectors(v []string) *OAuth2ClientUpdate {
+	_u.mutation.AppendAllowedConnectors(v)
+	return _u
+}
+
+// ClearAllowedConnectors clears the value of the "allowed_connectors" field.
+func (_u *OAuth2ClientUpdate) ClearAllowedConnectors() *OAuth2ClientUpdate {
+	_u.mutation.ClearAllowedConnectors()
+	return _u
+}
+
+// SetMfaChain sets the "mfa_chain" field.
+func (_u *OAuth2ClientUpdate) SetMfaChain(v []string) *OAuth2ClientUpdate {
+	_u.mutation.SetMfaChain(v)
+	return _u
+}
+
+// AppendMfaChain appends value to the "mfa_chain" field.
+func (_u *OAuth2ClientUpdate) AppendMfaChain(v []string) *OAuth2ClientUpdate {
+	_u.mutation.AppendMfaChain(v)
+	return _u
+}
+
+// ClearMfaChain clears the value of the "mfa_chain" field.
+func (_u *OAuth2ClientUpdate) ClearMfaChain() *OAuth2ClientUpdate {
+	_u.mutation.ClearMfaChain()
+	return _u
+}
+
+// SetPostLogoutRedirectUris sets the "post_logout_redirect_uris" field.
+func (_u *OAuth2ClientUpdate) SetPostLogoutRedirectUris(v []string) *OAuth2ClientUpdate {
+	_u.mutation.SetPostLogoutRedirectUris(v)
+	return _u
+}
+
+// AppendPostLogoutRedirectUris appends value to the "post_logout_redirect_uris" field.
+func (_u *OAuth2ClientUpdate) AppendPostLogoutRedirectUris(v []string) *OAuth2ClientUpdate {
+	_u.mutation.AppendPostLogoutRedirectUris(v)
+	return _u
+}
+
+// ClearPostLogoutRedirectUris clears the value of the "post_logout_redirect_uris" field.
+func (_u *OAuth2ClientUpdate) ClearPostLogoutRedirectUris() *OAuth2ClientUpdate {
+	_u.mutation.ClearPostLogoutRedirectUris()
+	return _u
+}
+
+// SetSSOSharedWith sets the "sso_shared_with" field.
+func (_u *OAuth2ClientUpdate) SetSSOSharedWith(v []string) *OAuth2ClientUpdate {
+	_u.mutation.SetSSOSharedWith(v)
+	return _u
+}
+
+// AppendSSOSharedWith appends value to the "sso_shared_with" field.
+func (_u *OAuth2ClientUpdate) AppendSSOSharedWith(v []string) *OAuth2ClientUpdate {
+	_u.mutation.AppendSSOSharedWith(v)
+	return _u
+}
+
+// ClearSSOSharedWith clears the value of the "sso_shared_with" field.
+func (_u *OAuth2ClientUpdate) ClearSSOSharedWith() *OAuth2ClientUpdate {
+	_u.mutation.ClearSSOSharedWith()
+	return _u
+}
+
+// SetBackchannelLogoutURI sets the "backchannel_logout_uri" field.
+func (_u *OAuth2ClientUpdate) SetBackchannelLogoutURI(v string) *OAuth2ClientUpdate {
+	_u.mutation.SetBackchannelLogoutURI(v)
+	return _u
+}
+
+// SetNillableBackchannelLogoutURI sets the "backchannel_logout_uri" field if the given value is not nil.
+func (_u *OAuth2ClientUpdate) SetNillableBackchannelLogoutURI(v *string) *OAuth2ClientUpdate {
+	if v != nil {
+		_u.SetBackchannelLogoutURI(*v)
+	}
+	return _u
+}
+
+// ClearBackchannelLogoutURI clears the value of the "backchannel_logout_uri" field.
+func (_u *OAuth2ClientUpdate) ClearBackchannelLogoutURI() *OAuth2ClientUpdate {
+	_u.mutation.ClearBackchannelLogoutURI()
+	return _u
+}
+
+// SetRefreshTokenLifetime sets the "refresh_token_lifetime" field.
+func (_u *OAuth2ClientUpdate) SetRefreshTokenLifetime(v string) *OAuth2ClientUpdate {
+	_u.mutation.SetRefreshTokenLifetime(v)
+	return _u
+}
+
+// SetNillableRefreshTokenLifetime sets the "refresh_token_lifetime" field if the given value is not nil.
+func (_u *OAuth2ClientUpdate) SetNillableRefreshTokenLifetime(v *string) *OAuth2ClientUpdate {
+	if v != nil {
+		_u.SetRefreshTokenLifetime(*v)
+	}
+	return _u
+}
+
+// ClearRefreshTokenLifetime clears the value of the "refresh_token_lifetime" field.
+func (_u *OAuth2ClientUpdate) ClearRefreshTokenLifetime() *OAuth2ClientUpdate {
+	_u.mutation.ClearRefreshTokenLifetime()
+	return _u
+}
+
+// SetClientCredentialsClaims sets the "client_credentials_claims" field.
+func (_u *OAuth2ClientUpdate) SetClientCredentialsClaims(v *storage.ClientCredentialsClaims) *OAuth2ClientUpdate {
+	_u.mutation.SetClientCredentialsClaims(v)
+	return _u
+}
+
+// ClearClientCredentialsClaims clears the value of the "client_credentials_claims" field.
+func (_u *OAuth2ClientUpdate) ClearClientCredentialsClaims() *OAuth2ClientUpdate {
+	_u.mutation.ClearClientCredentialsClaims()
+	return _u
 }
 
 // Mutation returns the OAuth2ClientMutation object of the builder.
-func (ou *OAuth2ClientUpdate) Mutation() *OAuth2ClientMutation {
-	return ou.mutation
+func (_u *OAuth2ClientUpdate) Mutation() *OAuth2ClientMutation {
+	return _u.mutation
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
-func (ou *OAuth2ClientUpdate) Save(ctx context.Context) (int, error) {
-	return withHooks(ctx, ou.sqlSave, ou.mutation, ou.hooks)
+func (_u *OAuth2ClientUpdate) Save(ctx context.Context) (int, error) {
+	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (ou *OAuth2ClientUpdate) SaveX(ctx context.Context) int {
-	affected, err := ou.Save(ctx)
+func (_u *OAuth2ClientUpdate) SaveX(ctx context.Context) int {
+	affected, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -140,31 +265,31 @@ func (ou *OAuth2ClientUpdate) SaveX(ctx context.Context) int {
 }
 
 // Exec executes the query.
-func (ou *OAuth2ClientUpdate) Exec(ctx context.Context) error {
-	_, err := ou.Save(ctx)
+func (_u *OAuth2ClientUpdate) Exec(ctx context.Context) error {
+	_, err := _u.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (ou *OAuth2ClientUpdate) ExecX(ctx context.Context) {
-	if err := ou.Exec(ctx); err != nil {
+func (_u *OAuth2ClientUpdate) ExecX(ctx context.Context) {
+	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (ou *OAuth2ClientUpdate) check() error {
-	if v, ok := ou.mutation.Secret(); ok {
+func (_u *OAuth2ClientUpdate) check() error {
+	if v, ok := _u.mutation.Secret(); ok {
 		if err := oauth2client.SecretValidator(v); err != nil {
 			return &ValidationError{Name: "secret", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.secret": %w`, err)}
 		}
 	}
-	if v, ok := ou.mutation.Name(); ok {
+	if v, ok := _u.mutation.Name(); ok {
 		if err := oauth2client.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.name": %w`, err)}
 		}
 	}
-	if v, ok := ou.mutation.LogoURL(); ok {
+	if v, ok := _u.mutation.LogoURL(); ok {
 		if err := oauth2client.LogoURLValidator(v); err != nil {
 			return &ValidationError{Name: "logo_url", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.logo_url": %w`, err)}
 		}
@@ -172,53 +297,115 @@ func (ou *OAuth2ClientUpdate) check() error {
 	return nil
 }
 
-func (ou *OAuth2ClientUpdate) sqlSave(ctx context.Context) (n int, err error) {
-	if err := ou.check(); err != nil {
-		return n, err
+func (_u *OAuth2ClientUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
 	}
 	_spec := sqlgraph.NewUpdateSpec(oauth2client.Table, oauth2client.Columns, sqlgraph.NewFieldSpec(oauth2client.FieldID, field.TypeString))
-	if ps := ou.mutation.predicates; len(ps) > 0 {
+	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
 			}
 		}
 	}
-	if value, ok := ou.mutation.Secret(); ok {
+	if value, ok := _u.mutation.Secret(); ok {
 		_spec.SetField(oauth2client.FieldSecret, field.TypeString, value)
 	}
-	if value, ok := ou.mutation.RedirectUris(); ok {
+	if value, ok := _u.mutation.RedirectUris(); ok {
 		_spec.SetField(oauth2client.FieldRedirectUris, field.TypeJSON, value)
 	}
-	if value, ok := ou.mutation.AppendedRedirectUris(); ok {
+	if value, ok := _u.mutation.AppendedRedirectUris(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, oauth2client.FieldRedirectUris, value)
 		})
 	}
-	if ou.mutation.RedirectUrisCleared() {
+	if _u.mutation.RedirectUrisCleared() {
 		_spec.ClearField(oauth2client.FieldRedirectUris, field.TypeJSON)
 	}
-	if value, ok := ou.mutation.TrustedPeers(); ok {
+	if value, ok := _u.mutation.TrustedPeers(); ok {
 		_spec.SetField(oauth2client.FieldTrustedPeers, field.TypeJSON, value)
 	}
-	if value, ok := ou.mutation.AppendedTrustedPeers(); ok {
+	if value, ok := _u.mutation.AppendedTrustedPeers(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, oauth2client.FieldTrustedPeers, value)
 		})
 	}
-	if ou.mutation.TrustedPeersCleared() {
+	if _u.mutation.TrustedPeersCleared() {
 		_spec.ClearField(oauth2client.FieldTrustedPeers, field.TypeJSON)
 	}
-	if value, ok := ou.mutation.Public(); ok {
+	if value, ok := _u.mutation.Public(); ok {
 		_spec.SetField(oauth2client.FieldPublic, field.TypeBool, value)
 	}
-	if value, ok := ou.mutation.Name(); ok {
+	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(oauth2client.FieldName, field.TypeString, value)
 	}
-	if value, ok := ou.mutation.LogoURL(); ok {
+	if value, ok := _u.mutation.LogoURL(); ok {
 		_spec.SetField(oauth2client.FieldLogoURL, field.TypeString, value)
 	}
-	if n, err = sqlgraph.UpdateNodes(ctx, ou.driver, _spec); err != nil {
+	if value, ok := _u.mutation.AllowedConnectors(); ok {
+		_spec.SetField(oauth2client.FieldAllowedConnectors, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedConnectors(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldAllowedConnectors, value)
+		})
+	}
+	if _u.mutation.AllowedConnectorsCleared() {
+		_spec.ClearField(oauth2client.FieldAllowedConnectors, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.MfaChain(); ok {
+		_spec.SetField(oauth2client.FieldMfaChain, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedMfaChain(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldMfaChain, value)
+		})
+	}
+	if _u.mutation.MfaChainCleared() {
+		_spec.ClearField(oauth2client.FieldMfaChain, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.PostLogoutRedirectUris(); ok {
+		_spec.SetField(oauth2client.FieldPostLogoutRedirectUris, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedPostLogoutRedirectUris(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldPostLogoutRedirectUris, value)
+		})
+	}
+	if _u.mutation.PostLogoutRedirectUrisCleared() {
+		_spec.ClearField(oauth2client.FieldPostLogoutRedirectUris, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.SSOSharedWith(); ok {
+		_spec.SetField(oauth2client.FieldSSOSharedWith, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSSOSharedWith(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldSSOSharedWith, value)
+		})
+	}
+	if _u.mutation.SSOSharedWithCleared() {
+		_spec.ClearField(oauth2client.FieldSSOSharedWith, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.BackchannelLogoutURI(); ok {
+		_spec.SetField(oauth2client.FieldBackchannelLogoutURI, field.TypeString, value)
+	}
+	if _u.mutation.BackchannelLogoutURICleared() {
+		_spec.ClearField(oauth2client.FieldBackchannelLogoutURI, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefreshTokenLifetime(); ok {
+		_spec.SetField(oauth2client.FieldRefreshTokenLifetime, field.TypeString, value)
+	}
+	if _u.mutation.RefreshTokenLifetimeCleared() {
+		_spec.ClearField(oauth2client.FieldRefreshTokenLifetime, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientCredentialsClaims(); ok {
+		_spec.SetField(oauth2client.FieldClientCredentialsClaims, field.TypeJSON, value)
+	}
+	if _u.mutation.ClientCredentialsClaimsCleared() {
+		_spec.ClearField(oauth2client.FieldClientCredentialsClaims, field.TypeJSON)
+	}
+	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{oauth2client.Label}
 		} else if sqlgraph.IsConstraintError(err) {
@@ -226,8 +413,8 @@ func (ou *OAuth2ClientUpdate) sqlSave(ctx context.Context) (n int, err error) {
 		}
 		return 0, err
 	}
-	ou.mutation.done = true
-	return n, nil
+	_u.mutation.done = true
+	return _node, nil
 }
 
 // OAuth2ClientUpdateOne is the builder for updating a single OAuth2Client entity.
@@ -239,123 +426,247 @@ type OAuth2ClientUpdateOne struct {
 }
 
 // SetSecret sets the "secret" field.
-func (ouo *OAuth2ClientUpdateOne) SetSecret(s string) *OAuth2ClientUpdateOne {
-	ouo.mutation.SetSecret(s)
-	return ouo
+func (_u *OAuth2ClientUpdateOne) SetSecret(v string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetSecret(v)
+	return _u
 }
 
 // SetNillableSecret sets the "secret" field if the given value is not nil.
-func (ouo *OAuth2ClientUpdateOne) SetNillableSecret(s *string) *OAuth2ClientUpdateOne {
-	if s != nil {
-		ouo.SetSecret(*s)
+func (_u *OAuth2ClientUpdateOne) SetNillableSecret(v *string) *OAuth2ClientUpdateOne {
+	if v != nil {
+		_u.SetSecret(*v)
 	}
-	return ouo
+	return _u
 }
 
 // SetRedirectUris sets the "redirect_uris" field.
-func (ouo *OAuth2ClientUpdateOne) SetRedirectUris(s []string) *OAuth2ClientUpdateOne {
-	ouo.mutation.SetRedirectUris(s)
-	return ouo
+func (_u *OAuth2ClientUpdateOne) SetRedirectUris(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetRedirectUris(v)
+	return _u
 }
 
-// AppendRedirectUris appends s to the "redirect_uris" field.
-func (ouo *OAuth2ClientUpdateOne) AppendRedirectUris(s []string) *OAuth2ClientUpdateOne {
-	ouo.mutation.AppendRedirectUris(s)
-	return ouo
+// AppendRedirectUris appends value to the "redirect_uris" field.
+func (_u *OAuth2ClientUpdateOne) AppendRedirectUris(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.AppendRedirectUris(v)
+	return _u
 }
 
 // ClearRedirectUris clears the value of the "redirect_uris" field.
-func (ouo *OAuth2ClientUpdateOne) ClearRedirectUris() *OAuth2ClientUpdateOne {
-	ouo.mutation.ClearRedirectUris()
-	return ouo
+func (_u *OAuth2ClientUpdateOne) ClearRedirectUris() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearRedirectUris()
+	return _u
 }
 
 // SetTrustedPeers sets the "trusted_peers" field.
-func (ouo *OAuth2ClientUpdateOne) SetTrustedPeers(s []string) *OAuth2ClientUpdateOne {
-	ouo.mutation.SetTrustedPeers(s)
-	return ouo
+func (_u *OAuth2ClientUpdateOne) SetTrustedPeers(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetTrustedPeers(v)
+	return _u
 }
 
-// AppendTrustedPeers appends s to the "trusted_peers" field.
-func (ouo *OAuth2ClientUpdateOne) AppendTrustedPeers(s []string) *OAuth2ClientUpdateOne {
-	ouo.mutation.AppendTrustedPeers(s)
-	return ouo
+// AppendTrustedPeers appends value to the "trusted_peers" field.
+func (_u *OAuth2ClientUpdateOne) AppendTrustedPeers(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.AppendTrustedPeers(v)
+	return _u
 }
 
 // ClearTrustedPeers clears the value of the "trusted_peers" field.
-func (ouo *OAuth2ClientUpdateOne) ClearTrustedPeers() *OAuth2ClientUpdateOne {
-	ouo.mutation.ClearTrustedPeers()
-	return ouo
+func (_u *OAuth2ClientUpdateOne) ClearTrustedPeers() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearTrustedPeers()
+	return _u
 }
 
 // SetPublic sets the "public" field.
-func (ouo *OAuth2ClientUpdateOne) SetPublic(b bool) *OAuth2ClientUpdateOne {
-	ouo.mutation.SetPublic(b)
-	return ouo
+func (_u *OAuth2ClientUpdateOne) SetPublic(v bool) *OAuth2ClientUpdateOne {
+	_u.mutation.SetPublic(v)
+	return _u
 }
 
 // SetNillablePublic sets the "public" field if the given value is not nil.
-func (ouo *OAuth2ClientUpdateOne) SetNillablePublic(b *bool) *OAuth2ClientUpdateOne {
-	if b != nil {
-		ouo.SetPublic(*b)
+func (_u *OAuth2ClientUpdateOne) SetNillablePublic(v *bool) *OAuth2ClientUpdateOne {
+	if v != nil {
+		_u.SetPublic(*v)
 	}
-	return ouo
+	return _u
 }
 
 // SetName sets the "name" field.
-func (ouo *OAuth2ClientUpdateOne) SetName(s string) *OAuth2ClientUpdateOne {
-	ouo.mutation.SetName(s)
-	return ouo
+func (_u *OAuth2ClientUpdateOne) SetName(v string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetName(v)
+	return _u
 }
 
 // SetNillableName sets the "name" field if the given value is not nil.
-func (ouo *OAuth2ClientUpdateOne) SetNillableName(s *string) *OAuth2ClientUpdateOne {
-	if s != nil {
-		ouo.SetName(*s)
+func (_u *OAuth2ClientUpdateOne) SetNillableName(v *string) *OAuth2ClientUpdateOne {
+	if v != nil {
+		_u.SetName(*v)
 	}
-	return ouo
+	return _u
 }
 
 // SetLogoURL sets the "logo_url" field.
-func (ouo *OAuth2ClientUpdateOne) SetLogoURL(s string) *OAuth2ClientUpdateOne {
-	ouo.mutation.SetLogoURL(s)
-	return ouo
+func (_u *OAuth2ClientUpdateOne) SetLogoURL(v string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetLogoURL(v)
+	return _u
 }
 
 // SetNillableLogoURL sets the "logo_url" field if the given value is not nil.
-func (ouo *OAuth2ClientUpdateOne) SetNillableLogoURL(s *string) *OAuth2ClientUpdateOne {
-	if s != nil {
-		ouo.SetLogoURL(*s)
+func (_u *OAuth2ClientUpdateOne) SetNillableLogoURL(v *string) *OAuth2ClientUpdateOne {
+	if v != nil {
+		_u.SetLogoURL(*v)
 	}
-	return ouo
+	return _u
+}
+
+// SetAllowedConnectors sets the "allowed_connectors" field.
+func (_u *OAuth2ClientUpdateOne) SetAllowedConnectors(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetAllowedConnectors(v)
+	return _u
+}
+
+// AppendAllowedConnectors appends value to the "allowed_connectors" field.
+func (_u *OAuth2ClientUpdateOne) AppendAllowedConnectors(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.AppendAllowedConnectors(v)
+	return _u
+}
+
+// ClearAllowedConnectors clears the value of the "allowed_connectors" field.
+func (_u *OAuth2ClientUpdateOne) ClearAllowedConnectors() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearAllowedConnectors()
+	return _u
+}
+
+// SetMfaChain sets the "mfa_chain" field.
+func (_u *OAuth2ClientUpdateOne) SetMfaChain(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetMfaChain(v)
+	return _u
+}
+
+// AppendMfaChain appends value to the "mfa_chain" field.
+func (_u *OAuth2ClientUpdateOne) AppendMfaChain(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.AppendMfaChain(v)
+	return _u
+}
+
+// ClearMfaChain clears the value of the "mfa_chain" field.
+func (_u *OAuth2ClientUpdateOne) ClearMfaChain() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearMfaChain()
+	return _u
+}
+
+// SetPostLogoutRedirectUris sets the "post_logout_redirect_uris" field.
+func (_u *OAuth2ClientUpdateOne) SetPostLogoutRedirectUris(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetPostLogoutRedirectUris(v)
+	return _u
+}
+
+// AppendPostLogoutRedirectUris appends value to the "post_logout_redirect_uris" field.
+func (_u *OAuth2ClientUpdateOne) AppendPostLogoutRedirectUris(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.AppendPostLogoutRedirectUris(v)
+	return _u
+}
+
+// ClearPostLogoutRedirectUris clears the value of the "post_logout_redirect_uris" field.
+func (_u *OAuth2ClientUpdateOne) ClearPostLogoutRedirectUris() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearPostLogoutRedirectUris()
+	return _u
+}
+
+// SetSSOSharedWith sets the "sso_shared_with" field.
+func (_u *OAuth2ClientUpdateOne) SetSSOSharedWith(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetSSOSharedWith(v)
+	return _u
+}
+
+// AppendSSOSharedWith appends value to the "sso_shared_with" field.
+func (_u *OAuth2ClientUpdateOne) AppendSSOSharedWith(v []string) *OAuth2ClientUpdateOne {
+	_u.mutation.AppendSSOSharedWith(v)
+	return _u
+}
+
+// ClearSSOSharedWith clears the value of the "sso_shared_with" field.
+func (_u *OAuth2ClientUpdateOne) ClearSSOSharedWith() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearSSOSharedWith()
+	return _u
+}
+
+// SetBackchannelLogoutURI sets the "backchannel_logout_uri" field.
+func (_u *OAuth2ClientUpdateOne) SetBackchannelLogoutURI(v string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetBackchannelLogoutURI(v)
+	return _u
+}
+
+// SetNillableBackchannelLogoutURI sets the "backchannel_logout_uri" field if the given value is not nil.
+func (_u *OAuth2ClientUpdateOne) SetNillableBackchannelLogoutURI(v *string) *OAuth2ClientUpdateOne {
+	if v != nil {
+		_u.SetBackchannelLogoutURI(*v)
+	}
+	return _u
+}
+
+// ClearBackchannelLogoutURI clears the value of the "backchannel_logout_uri" field.
+func (_u *OAuth2ClientUpdateOne) ClearBackchannelLogoutURI() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearBackchannelLogoutURI()
+	return _u
+}
+
+// SetRefreshTokenLifetime sets the "refresh_token_lifetime" field.
+func (_u *OAuth2ClientUpdateOne) SetRefreshTokenLifetime(v string) *OAuth2ClientUpdateOne {
+	_u.mutation.SetRefreshTokenLifetime(v)
+	return _u
+}
+
+// SetNillableRefreshTokenLifetime sets the "refresh_token_lifetime" field if the given value is not nil.
+func (_u *OAuth2ClientUpdateOne) SetNillableRefreshTokenLifetime(v *string) *OAuth2ClientUpdateOne {
+	if v != nil {
+		_u.SetRefreshTokenLifetime(*v)
+	}
+	return _u
+}
+
+// ClearRefreshTokenLifetime clears the value of the "refresh_token_lifetime" field.
+func (_u *OAuth2ClientUpdateOne) ClearRefreshTokenLifetime() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearRefreshTokenLifetime()
+	return _u
+}
+
+// SetClientCredentialsClaims sets the "client_credentials_claims" field.
+func (_u *OAuth2ClientUpdateOne) SetClientCredentialsClaims(v *storage.ClientCredentialsClaims) *OAuth2ClientUpdateOne {
+	_u.mutation.SetClientCredentialsClaims(v)
+	return _u
+}
+
+// ClearClientCredentialsClaims clears the value of the "client_credentials_claims" field.
+func (_u *OAuth2ClientUpdateOne) ClearClientCredentialsClaims() *OAuth2ClientUpdateOne {
+	_u.mutation.ClearClientCredentialsClaims()
+	return _u
 }
 
 // Mutation returns the OAuth2ClientMutation object of the builder.
-func (ouo *OAuth2ClientUpdateOne) Mutation() *OAuth2ClientMutation {
-	return ouo.mutation
+func (_u *OAuth2ClientUpdateOne) Mutation() *OAuth2ClientMutation {
+	return _u.mutation
 }
 
 // Where appends a list predicates to the OAuth2ClientUpdate builder.
-func (ouo *OAuth2ClientUpdateOne) Where(ps ...predicate.OAuth2Client) *OAuth2ClientUpdateOne {
-	ouo.mutation.Where(ps...)
-	return ouo
+func (_u *OAuth2ClientUpdateOne) Where(ps ...predicate.OAuth2Client) *OAuth2ClientUpdateOne {
+	_u.mutation.Where(ps...)
+	return _u
 }
 
 // Select allows selecting one or more fields (columns) of the returned entity.
 // The default is selecting all fields defined in the entity schema.
-func (ouo *OAuth2ClientUpdateOne) Select(field string, fields ...string) *OAuth2ClientUpdateOne {
-	ouo.fields = append([]string{field}, fields...)
-	return ouo
+func (_u *OAuth2ClientUpdateOne) Select(field string, fields ...string) *OAuth2ClientUpdateOne {
+	_u.fields = append([]string{field}, fields...)
+	return _u
 }
 
 // Save executes the query and returns the updated OAuth2Client entity.
-func (ouo *OAuth2ClientUpdateOne) Save(ctx context.Context) (*OAuth2Client, error) {
-	return withHooks(ctx, ouo.sqlSave, ouo.mutation, ouo.hooks)
+func (_u *OAuth2ClientUpdateOne) Save(ctx context.Context) (*OAuth2Client, error) {
+	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 }
 
 // SaveX is like Save, but panics if an error occurs.
-func (ouo *OAuth2ClientUpdateOne) SaveX(ctx context.Context) *OAuth2Client {
-	node, err := ouo.Save(ctx)
+func (_u *OAuth2ClientUpdateOne) SaveX(ctx context.Context) *OAuth2Client {
+	node, err := _u.Save(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -363,31 +674,31 @@ func (ouo *OAuth2ClientUpdateOne) SaveX(ctx context.Context) *OAuth2Client {
 }
 
 // Exec executes the query on the entity.
-func (ouo *OAuth2ClientUpdateOne) Exec(ctx context.Context) error {
-	_, err := ouo.Save(ctx)
+func (_u *OAuth2ClientUpdateOne) Exec(ctx context.Context) error {
+	_, err := _u.Save(ctx)
 	return err
 }
 
 // ExecX is like Exec, but panics if an error occurs.
-func (ouo *OAuth2ClientUpdateOne) ExecX(ctx context.Context) {
-	if err := ouo.Exec(ctx); err != nil {
+func (_u *OAuth2ClientUpdateOne) ExecX(ctx context.Context) {
+	if err := _u.Exec(ctx); err != nil {
 		panic(err)
 	}
 }
 
 // check runs all checks and user-defined validators on the builder.
-func (ouo *OAuth2ClientUpdateOne) check() error {
-	if v, ok := ouo.mutation.Secret(); ok {
+func (_u *OAuth2ClientUpdateOne) check() error {
+	if v, ok := _u.mutation.Secret(); ok {
 		if err := oauth2client.SecretValidator(v); err != nil {
 			return &ValidationError{Name: "secret", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.secret": %w`, err)}
 		}
 	}
-	if v, ok := ouo.mutation.Name(); ok {
+	if v, ok := _u.mutation.Name(); ok {
 		if err := oauth2client.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.name": %w`, err)}
 		}
 	}
-	if v, ok := ouo.mutation.LogoURL(); ok {
+	if v, ok := _u.mutation.LogoURL(); ok {
 		if err := oauth2client.LogoURLValidator(v); err != nil {
 			return &ValidationError{Name: "logo_url", err: fmt.Errorf(`db: validator failed for field "OAuth2Client.logo_url": %w`, err)}
 		}
@@ -395,17 +706,17 @@ func (ouo *OAuth2ClientUpdateOne) check() error {
 	return nil
 }
 
-func (ouo *OAuth2ClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuth2Client, err error) {
-	if err := ouo.check(); err != nil {
+func (_u *OAuth2ClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuth2Client, err error) {
+	if err := _u.check(); err != nil {
 		return _node, err
 	}
 	_spec := sqlgraph.NewUpdateSpec(oauth2client.Table, oauth2client.Columns, sqlgraph.NewFieldSpec(oauth2client.FieldID, field.TypeString))
-	id, ok := ouo.mutation.ID()
+	id, ok := _u.mutation.ID()
 	if !ok {
 		return nil, &ValidationError{Name: "id", err: errors.New(`db: missing "OAuth2Client.id" for update`)}
 	}
 	_spec.Node.ID.Value = id
-	if fields := ouo.fields; len(fields) > 0 {
+	if fields := _u.fields; len(fields) > 0 {
 		_spec.Node.Columns = make([]string, 0, len(fields))
 		_spec.Node.Columns = append(_spec.Node.Columns, oauth2client.FieldID)
 		for _, f := range fields {
@@ -417,51 +728,113 @@ func (ouo *OAuth2ClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuth2Cli
 			}
 		}
 	}
-	if ps := ouo.mutation.predicates; len(ps) > 0 {
+	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
 			for i := range ps {
 				ps[i](selector)
 			}
 		}
 	}
-	if value, ok := ouo.mutation.Secret(); ok {
+	if value, ok := _u.mutation.Secret(); ok {
 		_spec.SetField(oauth2client.FieldSecret, field.TypeString, value)
 	}
-	if value, ok := ouo.mutation.RedirectUris(); ok {
+	if value, ok := _u.mutation.RedirectUris(); ok {
 		_spec.SetField(oauth2client.FieldRedirectUris, field.TypeJSON, value)
 	}
-	if value, ok := ouo.mutation.AppendedRedirectUris(); ok {
+	if value, ok := _u.mutation.AppendedRedirectUris(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, oauth2client.FieldRedirectUris, value)
 		})
 	}
-	if ouo.mutation.RedirectUrisCleared() {
+	if _u.mutation.RedirectUrisCleared() {
 		_spec.ClearField(oauth2client.FieldRedirectUris, field.TypeJSON)
 	}
-	if value, ok := ouo.mutation.TrustedPeers(); ok {
+	if value, ok := _u.mutation.TrustedPeers(); ok {
 		_spec.SetField(oauth2client.FieldTrustedPeers, field.TypeJSON, value)
 	}
-	if value, ok := ouo.mutation.AppendedTrustedPeers(); ok {
+	if value, ok := _u.mutation.AppendedTrustedPeers(); ok {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, oauth2client.FieldTrustedPeers, value)
 		})
 	}
-	if ouo.mutation.TrustedPeersCleared() {
+	if _u.mutation.TrustedPeersCleared() {
 		_spec.ClearField(oauth2client.FieldTrustedPeers, field.TypeJSON)
 	}
-	if value, ok := ouo.mutation.Public(); ok {
+	if value, ok := _u.mutation.Public(); ok {
 		_spec.SetField(oauth2client.FieldPublic, field.TypeBool, value)
 	}
-	if value, ok := ouo.mutation.Name(); ok {
+	if value, ok := _u.mutation.Name(); ok {
 		_spec.SetField(oauth2client.FieldName, field.TypeString, value)
 	}
-	if value, ok := ouo.mutation.LogoURL(); ok {
+	if value, ok := _u.mutation.LogoURL(); ok {
 		_spec.SetField(oauth2client.FieldLogoURL, field.TypeString, value)
 	}
-	_node = &OAuth2Client{config: ouo.config}
+	if value, ok := _u.mutation.AllowedConnectors(); ok {
+		_spec.SetField(oauth2client.FieldAllowedConnectors, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedAllowedConnectors(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldAllowedConnectors, value)
+		})
+	}
+	if _u.mutation.AllowedConnectorsCleared() {
+		_spec.ClearField(oauth2client.FieldAllowedConnectors, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.MfaChain(); ok {
+		_spec.SetField(oauth2client.FieldMfaChain, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedMfaChain(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldMfaChain, value)
+		})
+	}
+	if _u.mutation.MfaChainCleared() {
+		_spec.ClearField(oauth2client.FieldMfaChain, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.PostLogoutRedirectUris(); ok {
+		_spec.SetField(oauth2client.FieldPostLogoutRedirectUris, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedPostLogoutRedirectUris(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldPostLogoutRedirectUris, value)
+		})
+	}
+	if _u.mutation.PostLogoutRedirectUrisCleared() {
+		_spec.ClearField(oauth2client.FieldPostLogoutRedirectUris, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.SSOSharedWith(); ok {
+		_spec.SetField(oauth2client.FieldSSOSharedWith, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedSSOSharedWith(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, oauth2client.FieldSSOSharedWith, value)
+		})
+	}
+	if _u.mutation.SSOSharedWithCleared() {
+		_spec.ClearField(oauth2client.FieldSSOSharedWith, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.BackchannelLogoutURI(); ok {
+		_spec.SetField(oauth2client.FieldBackchannelLogoutURI, field.TypeString, value)
+	}
+	if _u.mutation.BackchannelLogoutURICleared() {
+		_spec.ClearField(oauth2client.FieldBackchannelLogoutURI, field.TypeString)
+	}
+	if value, ok := _u.mutation.RefreshTokenLifetime(); ok {
+		_spec.SetField(oauth2client.FieldRefreshTokenLifetime, field.TypeString, value)
+	}
+	if _u.mutation.RefreshTokenLifetimeCleared() {
+		_spec.ClearField(oauth2client.FieldRefreshTokenLifetime, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientCredentialsClaims(); ok {
+		_spec.SetField(oauth2client.FieldClientCredentialsClaims, field.TypeJSON, value)
+	}
+	if _u.mutation.ClientCredentialsClaimsCleared() {
+		_spec.ClearField(oauth2client.FieldClientCredentialsClaims, field.TypeJSON)
+	}
+	_node = &OAuth2Client{config: _u.config}
 	_spec.Assign = _node.assignValues
 	_spec.ScanValues = _node.scanValues
-	if err = sqlgraph.UpdateNode(ctx, ouo.driver, _spec); err != nil {
+	if err = sqlgraph.UpdateNode(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{oauth2client.Label}
 		} else if sqlgraph.IsConstraintError(err) {
@@ -469,6 +842,6 @@ func (ouo *OAuth2ClientUpdateOne) sqlSave(ctx context.Context) (_node *OAuth2Cli
 		}
 		return nil, err
 	}
-	ouo.mutation.done = true
+	_u.mutation.done = true
 	return _node, nil
 }

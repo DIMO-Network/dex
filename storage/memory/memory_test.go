@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"io"
 	"log/slog"
 	"testing"
 
@@ -10,10 +9,11 @@ import (
 )
 
 func TestStorage(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	newStorage := func(t *testing.T) storage.Storage {
+		logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	newStorage := func() storage.Storage {
 		return New(logger)
 	}
 	conformance.RunTests(t, newStorage)
+	conformance.RunConcurrencyTests(t, newStorage)
 }

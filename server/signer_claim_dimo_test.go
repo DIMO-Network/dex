@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/dexidp/dex/connector"
+	"github.com/dexidp/dex/server/connectors"
+	"github.com/dexidp/dex/server/grants"
 	"github.com/dexidp/dex/storage"
 )
 
@@ -54,7 +56,7 @@ func TestExchangeAuthCodeSignerAddressClaim(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	httpServer, s := newTestServer(ctx, t, nil)
+	httpServer, s := newTestServer(t, nil)
 	defer httpServer.Close()
 
 	client := storage.Client{ID: testLicense, Secret: "secret", RedirectURIs: []string{testDomain}}
@@ -86,7 +88,9 @@ func TestExchangeAuthCodeSignerAddressClaim(t *testing.T) {
 			}
 			require.NoError(t, s.storage.CreateAuthCode(ctx, authCode))
 
-			resp, err := s.exchangeAuthCode(ctx, httptest.NewRecorder(), authCode, client)
+			auth, withRefresh, err := grants.ExchangeAuthCode(ctx, s.storage, s.connectors, s.logger, authCode, client)
+			require.NoError(t, err)
+			resp, err := s.issuer.IssueResponse(ctx, auth, authCode.ID, withRefresh)
 			require.NoError(t, err)
 
 			requireSignerClaim(t, resp.AccessToken, resp.IDToken, tc.want)
@@ -94,22 +98,27 @@ func TestExchangeAuthCodeSignerAddressClaim(t *testing.T) {
 	}
 }
 
-// web3StubConfig opens a Web3 connector that accepts any signature and reports Signer as
-// the challenge signer, so the generate_challenge → submit_challenge → token chain runs
-// end to end without a blockchain.
+// web3StubConfig opens a Web3 connector that accepts any signature, or none if Reject is set,
+// and reports Signer as the challenge signer, so the generate_challenge → submit_challenge →
+// token chain runs end to end without a blockchain.
 type web3StubConfig struct {
 	Signer string `json:"signer"`
+	Reject bool   `json:"reject"`
 }
 
 func (c *web3StubConfig) Open(string, *slog.Logger) (connector.Connector, error) {
-	return web3Stub{signer: c.Signer}, nil
+	return web3Stub{signer: c.Signer, reject: c.Reject}, nil
 }
 
-type web3Stub struct{ signer string }
-
-func (web3Stub) InfuraID() string { return "" }
+type web3Stub struct {
+	signer string
+	reject bool
+}
 
 func (w web3Stub) Verify(address, _, _ string) (connector.Identity, error) {
+	if w.reject {
+		return connector.Identity{}, errors.New("signature rejected")
+	}
 	identity := connector.Identity{UserID: address, Username: address}
 	if w.signer != "" {
 		data, err := json.Marshal(connector.Web3SignerData{SignerAddress: w.signer})
@@ -119,6 +128,12 @@ func (w web3Stub) Verify(address, _, _ string) (connector.Identity, error) {
 		identity.ConnectorData = data
 	}
 	return identity, nil
+}
+
+func registerWeb3Stub(t *testing.T) {
+	t.Helper()
+	ConnectorsConfig["web3Stub"] = func() connectors.ConnectorConfig { return new(web3StubConfig) }
+	t.Cleanup(func() { delete(ConnectorsConfig, "web3Stub") })
 }
 
 func postForm(t *testing.T, endpoint string, form url.Values) []byte {
@@ -133,13 +148,12 @@ func postForm(t *testing.T, endpoint string, form url.Values) []byte {
 }
 
 func TestSubmitChallengeSignerAddressClaim(t *testing.T) {
-	ConnectorsConfig["web3Stub"] = func() ConnectorConfig { return new(web3StubConfig) }
-	t.Cleanup(func() { delete(ConnectorsConfig, "web3Stub") })
+	registerWeb3Stub(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	httpServer, s := newTestServer(ctx, t, nil)
+	httpServer, s := newTestServer(t, nil)
 	defer httpServer.Close()
 
 	// Developer-license clients have no secret.

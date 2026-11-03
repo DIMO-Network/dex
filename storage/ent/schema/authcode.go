@@ -81,6 +81,13 @@ func (AuthCode) Fields() []ent.Field {
 		field.Text("code_challenge_method").
 			SchemaType(textSchema).
 			Default(""),
+		field.Time("auth_time").
+			SchemaType(timeSchema).
+			Optional(),
+		field.Text("session_id").
+			SchemaType(textSchema).
+			Default("").
+			Optional(),
 	}
 }
 

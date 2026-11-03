@@ -1,21 +1,30 @@
 package main
 
 import (
+	"encoding/json"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/ghodss/yaml"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/kylelemons/godebug/pretty"
+	"github.com/stretchr/testify/require"
 
 	"github.com/dexidp/dex/connector/mock"
 	"github.com/dexidp/dex/connector/oidc"
 	"github.com/dexidp/dex/server"
+	"github.com/dexidp/dex/server/signer"
 	"github.com/dexidp/dex/storage"
 	"github.com/dexidp/dex/storage/sql"
 )
 
 var _ = yaml.YAMLToJSON
+
+func boolPtr(v bool) *bool {
+	return &v
+}
 
 func TestValidConfiguration(t *testing.T) {
 	configuration := Config{
@@ -60,6 +69,42 @@ func TestInvalidConfiguration(t *testing.T) {
 	}
 }
 
+// TestInvalidRefreshTokenLifetime: a misspelled lifetime must not read as the
+// default, leaving tokens the client wanted bound outliving the session.
+func TestInvalidRefreshTokenLifetime(t *testing.T) {
+	configuration := Config{
+		Issuer:  "http://127.0.0.1:5556/dex",
+		Storage: Storage{Type: "sqlite3", Config: &sql.SQLite3{File: "examples/dex.db"}},
+		Web:     Web{HTTP: "127.0.0.1:5556"},
+		StaticClients: []storage.Client{
+			{ID: "proxy", RefreshTokenLifetime: "sessions"},
+		},
+	}
+
+	err := configuration.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `client "proxy"`)
+}
+
+// TestInvalidTLSPreferences: bad cipher suite and curve names must be reported
+// alongside the other config errors instead of hiding them.
+func TestInvalidTLSPreferences(t *testing.T) {
+	configuration := Config{
+		Storage: Storage{Type: "sqlite3", Config: &sql.SQLite3{File: "examples/dex.db"}},
+		Web: Web{
+			HTTP:                "127.0.0.1:5556",
+			TLSCiphers:          []string{"TLS_FAKE_CIPHER"},
+			TLSCurvePreferences: []string{"UnknownCurve"},
+		},
+	}
+
+	err := configuration.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no issuer specified in config file")
+	require.Contains(t, err.Error(), `invalid TLS cipher suites: unsupported cipher suite "TLS_FAKE_CIPHER"`)
+	require.Contains(t, err.Error(), `invalid TLS curve preferences: unknown curve: "UnknownCurve"`)
+}
+
 func TestUnmarshalConfig(t *testing.T) {
 	rawConfig := []byte(`
 issuer: http://127.0.0.1:5556/dex
@@ -101,6 +146,9 @@ connectors:
 - type: mockCallback
   id: mock
   name: Example
+  grantTypes:
+  - authorization_code
+  - "urn:ietf:params:oauth:grant-type:token-exchange"
 - type: oidc
   id: google
   name: Google
@@ -116,6 +164,12 @@ staticPasswords:
   # bcrypt hash of the string "password"
   hash: "$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy"
   username: "admin"
+  name: "Admin User"
+  emailVerified: false
+  preferredUsername: "admin-public"
+  groups:
+  - "team-a"
+  - "team-a/admins"
   userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
 - email: "foo@example.com"
   # base64'd value of the same bcrypt hash above. We want to be able to parse both of these
@@ -190,6 +244,10 @@ additionalFeatures: [
 				ID:     "mock",
 				Name:   "Example",
 				Config: &mock.CallbackConfig{},
+				GrantTypes: []string{
+					"authorization_code",
+					"urn:ietf:params:oauth:grant-type:token-exchange",
+				},
 			},
 			{
 				Type: "oidc",
@@ -206,10 +264,17 @@ additionalFeatures: [
 		EnablePasswordDB: true,
 		StaticPasswords: []password{
 			{
-				Email:    "admin@example.com",
-				Hash:     []byte("$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy"),
-				Username: "admin",
-				UserID:   "08a8684b-db88-4b73-90a9-3cd1661f5466",
+				Email:             "admin@example.com",
+				Hash:              []byte("$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy"),
+				Username:          "admin",
+				Name:              "Admin User",
+				EmailVerified:     boolPtr(false),
+				PreferredUsername: "admin-public",
+				UserID:            "08a8684b-db88-4b73-90a9-3cd1661f5466",
+				Groups: []string{
+					"team-a",
+					"team-a/admins",
+				},
 			},
 			{
 				Email:    "foo@example.com",
@@ -273,7 +338,8 @@ func checkUnmarshalConfigWithEnv(t *testing.T, dexExpandEnv string, wantExpandEn
 	os.Setenv("DEX_FOO_USER_PASSWORD", "$2a$10$33EMT0cVYVlPy6WAMCLsceLYjWhuHpbz5yuZxu/GAFj03J9Lytjuy")
 	// For os.ExpandEnv ($VAR -> value_of_VAR):
 	os.Setenv("DEX_FOO_POSTGRES_HOST", "10.0.0.1")
-	os.Setenv("DEX_FOO_OIDC_CLIENT_SECRET", "bar")
+	os.Setenv("DEX_FOO_POSTGRES_PASSWORD", `psql"test\pass`)
+	os.Setenv("DEX_FOO_OIDC_CLIENT_SECRET", `abc"def\ghi`)
 	if dexExpandEnv != "UNSET" {
 		os.Setenv("DEX_EXPAND_ENV", dexExpandEnv)
 	} else {
@@ -288,6 +354,7 @@ storage:
     # Env variables are expanded in raw YAML source.
     # Single quotes work fine, as long as the env variable doesn't contain any.
     host: '$DEX_FOO_POSTGRES_HOST'
+    password: '$DEX_FOO_POSTGRES_PASSWORD'
     port: 65432
     maxOpenConns: 5
     maxIdleConns: 3
@@ -350,10 +417,12 @@ logger:
 
 	// This is not a valid hostname. It's only used to check whether os.ExpandEnv was applied or not.
 	wantPostgresHost := "$DEX_FOO_POSTGRES_HOST"
+	wantPostgresPassword := "$DEX_FOO_POSTGRES_PASSWORD"
 	wantOidcClientSecret := "$DEX_FOO_OIDC_CLIENT_SECRET"
 	if wantExpandEnv {
 		wantPostgresHost = "10.0.0.1"
-		wantOidcClientSecret = "bar"
+		wantPostgresPassword = `psql"test\pass`
+		wantOidcClientSecret = `abc"def\ghi`
 	}
 
 	want := Config{
@@ -363,6 +432,7 @@ logger:
 			Config: &sql.Postgres{
 				NetworkDB: sql.NetworkDB{
 					Host:              wantPostgresHost,
+					Password:          wantPostgresPassword,
 					Port:              65432,
 					MaxOpenConns:      5,
 					MaxIdleConns:      3,
@@ -445,5 +515,200 @@ logger:
 
 	if diff := pretty.Compare(c, want); diff != "" {
 		t.Errorf("got!=want: %s", diff)
+	}
+}
+
+func TestSignerConfigUnmarshal(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      string
+		wantErr     bool
+		errContains string
+		check       func(*Config) error
+	}{
+		{
+			name: "local signer with rotation period",
+			config: `
+issuer: http://127.0.0.1:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+signer:
+  type: local
+  config:
+    keysRotationPeriod: 6h
+enablePasswordDB: true
+`,
+			wantErr: false,
+			check: func(c *Config) error {
+				if c.Signer.Type != "local" {
+					t.Errorf("expected signer type 'local', got %q", c.Signer.Type)
+				}
+				if localConfig, ok := c.Signer.Config.(*signer.LocalConfig); !ok {
+					t.Error("expected LocalConfig")
+				} else {
+					if localConfig.KeysRotationPeriod != "6h" {
+						t.Errorf("expected keys rotation period '6h', got %q", localConfig.KeysRotationPeriod)
+					}
+					if localConfig.Algorithm != jose.RS256 {
+						t.Errorf("expected default algorithm 'RS256', got %q", localConfig.Algorithm)
+					}
+				}
+				return nil
+			},
+		},
+		{
+			name: "local signer with ES256 algorithm",
+			config: `
+issuer: http://127.0.0.1:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+signer:
+  type: local
+  config:
+    keysRotationPeriod: 6h
+    algorithm: ES256
+enablePasswordDB: true
+`,
+			wantErr: false,
+			check: func(c *Config) error {
+				localConfig, ok := c.Signer.Config.(*signer.LocalConfig)
+				if !ok {
+					t.Error("expected LocalConfig")
+					return nil
+				}
+				if localConfig.Algorithm != jose.ES256 {
+					t.Errorf("expected algorithm 'ES256', got %q", localConfig.Algorithm)
+				}
+				return nil
+			},
+		},
+		{
+			name: "local signer with invalid algorithm",
+			config: `
+issuer: http://127.0.0.1:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+signer:
+  type: local
+  config:
+    keysRotationPeriod: 6h
+    algorithm: ES512
+enablePasswordDB: true
+`,
+			wantErr:     true,
+			errContains: `parse signer config: unsupported local signer algorithm "ES512"`,
+		},
+		{
+			name: "local signer without config",
+			config: `
+issuer: http://127.0.0.1:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+signer:
+  type: local
+enablePasswordDB: true
+`,
+			wantErr: false,
+			check: func(c *Config) error {
+				localConfig, ok := c.Signer.Config.(*signer.LocalConfig)
+				if !ok {
+					t.Error("expected LocalConfig")
+					return nil
+				}
+				if localConfig.Algorithm != jose.RS256 {
+					t.Errorf("expected default algorithm 'RS256', got %q", localConfig.Algorithm)
+				}
+				return nil
+			},
+		},
+		{
+			name: "vault signer",
+			config: `
+issuer: http://127.0.0.1:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+signer:
+  type: vault
+  config:
+    addr: http://localhost:8200
+    token: test-token
+    keyName: test-key
+enablePasswordDB: true
+`,
+			wantErr: false,
+			check: func(c *Config) error {
+				if c.Signer.Type != "vault" {
+					t.Errorf("expected signer type 'vault', got %q", c.Signer.Type)
+				}
+				if vaultConfig, ok := c.Signer.Config.(*signer.VaultConfig); !ok {
+					t.Error("expected VaultConfig")
+				} else {
+					if vaultConfig.Addr != "http://localhost:8200" {
+						t.Errorf("expected addr 'http://localhost:8200', got %q", vaultConfig.Addr)
+					}
+					if vaultConfig.Token != "test-token" {
+						t.Errorf("expected token 'test-token', got %q", vaultConfig.Token)
+					}
+					if vaultConfig.KeyName != "test-key" {
+						t.Errorf("expected keyName 'test-key', got %q", vaultConfig.KeyName)
+					}
+				}
+				return nil
+			},
+		},
+		{
+			name: "default to local when no signer specified",
+			config: `
+issuer: http://127.0.0.1:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+enablePasswordDB: true
+`,
+			wantErr: false,
+			check: func(c *Config) error {
+				if c.Signer.Type != "" {
+					t.Errorf("expected signer type '', got %q", c.Signer.Type)
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c Config
+			data, err := yaml.YAMLToJSON([]byte(tt.config))
+			if err != nil {
+				t.Fatalf("failed to convert yaml to json: %v", err)
+			}
+
+			err = json.Unmarshal(data, &c)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Unmarshal() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.errContains != "" && (err == nil || !strings.Contains(err.Error(), tt.errContains)) {
+				t.Errorf("Unmarshal() error = %v, want substring %q", err, tt.errContains)
+				return
+			}
+
+			if err == nil && tt.check != nil {
+				if err := tt.check(&c); err != nil {
+					t.Errorf("check failed: %v", err)
+				}
+			}
+		})
 	}
 }

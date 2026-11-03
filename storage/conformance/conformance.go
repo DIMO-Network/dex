@@ -2,10 +2,9 @@
 package conformance
 
 import (
-	"context"
+	"crypto/ecdsa"
 	"reflect"
 	"sort"
-	"strings"
 	"testing"
 	"time"
 
@@ -17,18 +16,24 @@ import (
 	"github.com/dexidp/dex/storage"
 )
 
+const keyRoundTripPayload = "storage-keys-round-trip"
+
 // ensure that values being tested on never expire.
 var neverExpire = time.Now().UTC().Add(time.Hour * 24 * 365 * 100)
+
+// defaultAuthTime is a non-zero time used as AuthTime default in tests.
+// MySQL rejects Go's zero time (0001-01-01), so all test fixtures must use a real value.
+var defaultAuthTime = time.Now().UTC()
 
 type subTest struct {
 	name string
 	run  func(t *testing.T, s storage.Storage)
 }
 
-func runTests(t *testing.T, newStorage func() storage.Storage, tests []subTest) {
+func runTests(t *testing.T, newStorage func(t *testing.T) storage.Storage, tests []subTest) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s := newStorage()
+			s := newStorage(t)
 			test.run(t, s)
 			s.Close()
 		})
@@ -38,7 +43,7 @@ func runTests(t *testing.T, newStorage func() storage.Storage, tests []subTest) 
 // RunTests runs a set of conformance tests against a storage. newStorage should
 // return an initialized but empty storage. The storage will be closed at the
 // end of each test run.
-func RunTests(t *testing.T, newStorage func() storage.Storage) {
+func RunTests(t *testing.T, newStorage func(t *testing.T) storage.Storage) {
 	runTests(t, newStorage, []subTest{
 		{"AuthCodeCRUD", testAuthCodeCRUD},
 		{"AuthRequestCRUD", testAuthRequestCRUD},
@@ -52,6 +57,8 @@ func RunTests(t *testing.T, newStorage func() storage.Storage) {
 		{"TimezoneSupport", testTimezones},
 		{"DeviceRequestCRUD", testDeviceRequestCRUD},
 		{"DeviceTokenCRUD", testDeviceTokenCRUD},
+		{"UserIdentityCRUD", testUserIdentityCRUD},
+		{"AuthSessionCRUD", testAuthSessionCRUD},
 	})
 }
 
@@ -67,7 +74,7 @@ func mustBeErrNotFound(t *testing.T, kind string, err error) {
 	switch {
 	case err == nil:
 		t.Errorf("deleting nonexistent %s should return an error", kind)
-	case !strings.Contains(err.Error(), "invalid client ID") && err != storage.ErrNotFound:
+	case err != storage.ErrNotFound:
 		t.Errorf("deleting %s expected storage.ErrNotFound, got %v", kind, err)
 	}
 }
@@ -81,8 +88,47 @@ func mustBeErrAlreadyExists(t *testing.T, kind string, err error) {
 	}
 }
 
+func isES256JWK(jwk *jose.JSONWebKey) bool {
+	if jwk == nil {
+		return false
+	}
+
+	switch jwk.Key.(type) {
+	case *ecdsa.PrivateKey, *ecdsa.PublicKey:
+		return jose.SignatureAlgorithm(jwk.Algorithm) == jose.ES256
+	default:
+		return false
+	}
+}
+
+func requireSigningKeyRoundTripUsable(t *testing.T, keys storage.Keys) {
+	t.Helper()
+
+	if !isES256JWK(keys.SigningKey) {
+		return
+	}
+	require.NotNil(t, keys.SigningKeyPub)
+
+	alg := jose.SignatureAlgorithm(keys.SigningKey.Algorithm)
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: alg, Key: keys.SigningKey}, nil)
+	require.NoError(t, err)
+
+	signed, err := signer.Sign([]byte(keyRoundTripPayload))
+	require.NoError(t, err)
+
+	compact, err := signed.CompactSerialize()
+	require.NoError(t, err)
+
+	jws, err := jose.ParseSigned(compact, []jose.SignatureAlgorithm{alg})
+	require.NoError(t, err)
+
+	payload, err := jws.Verify(keys.SigningKeyPub)
+	require.NoError(t, err)
+	require.Equal(t, []byte(keyRoundTripPayload), payload)
+}
+
 func testAuthRequestCRUD(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	codeChallenge := storage.PKCE{
 		CodeChallenge:       "code_challenge_test",
 		CodeChallengeMethod: "plain",
@@ -99,6 +145,7 @@ func testAuthRequestCRUD(t *testing.T, s storage.Storage) {
 		ForceApprovalPrompt: true,
 		LoggedIn:            true,
 		Expiry:              neverExpire,
+		AuthTime:            defaultAuthTime,
 		ConnectorID:         "ldap",
 		ConnectorData:       []byte(`{"some":"data"}`),
 		Claims: storage.Claims{
@@ -133,6 +180,7 @@ func testAuthRequestCRUD(t *testing.T, s storage.Storage) {
 		ForceApprovalPrompt: true,
 		LoggedIn:            true,
 		Expiry:              neverExpire,
+		AuthTime:            defaultAuthTime,
 		ConnectorID:         "ldap",
 		ConnectorData:       []byte(`{"some":"data"}`),
 		Claims: storage.Claims{
@@ -149,7 +197,7 @@ func testAuthRequestCRUD(t *testing.T, s storage.Storage) {
 		t.Fatalf("failed creating auth request: %v", err)
 	}
 
-	if err := s.UpdateAuthRequest(a1.ID, func(old storage.AuthRequest) (storage.AuthRequest, error) {
+	if err := s.UpdateAuthRequest(ctx, a1.ID, func(old storage.AuthRequest) (storage.AuthRequest, error) {
 		old.Claims = identity
 		old.ConnectorID = "connID"
 		return old, nil
@@ -157,7 +205,7 @@ func testAuthRequestCRUD(t *testing.T, s storage.Storage) {
 		t.Fatalf("failed to update auth request: %v", err)
 	}
 
-	got, err := s.GetAuthRequest(a1.ID)
+	got, err := s.GetAuthRequest(ctx, a1.ID)
 	if err != nil {
 		t.Fatalf("failed to get auth req: %v", err)
 	}
@@ -169,27 +217,30 @@ func testAuthRequestCRUD(t *testing.T, s storage.Storage) {
 		t.Fatalf("storage does not support PKCE, wanted challenge=%#v got %#v", codeChallenge, got.PKCE)
 	}
 
-	if err := s.DeleteAuthRequest(a1.ID); err != nil {
+	if err := s.DeleteAuthRequest(ctx, a1.ID); err != nil {
 		t.Fatalf("failed to delete auth request: %v", err)
 	}
 
-	if err := s.DeleteAuthRequest(a2.ID); err != nil {
+	if err := s.DeleteAuthRequest(ctx, a2.ID); err != nil {
 		t.Fatalf("failed to delete auth request: %v", err)
 	}
 
-	_, err = s.GetAuthRequest(a1.ID)
+	_, err = s.GetAuthRequest(ctx, a1.ID)
 	mustBeErrNotFound(t, "auth request", err)
 }
 
 func testAuthCodeCRUD(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	a1 := storage.AuthCode{
-		ID:            storage.NewID(),
-		ClientID:      "client1",
-		RedirectURI:   "https://localhost:80/callback",
-		Nonce:         "foobar",
-		Scopes:        []string{"openid", "email"},
-		Expiry:        neverExpire,
+		ID:          storage.NewID(),
+		ClientID:    "client1",
+		RedirectURI: "https://localhost:80/callback",
+		Nonce:       "foobar",
+		Scopes:      []string{"openid", "email"},
+		Expiry:      neverExpire,
+		AuthTime:    defaultAuthTime,
+		// Explicitly persisted: at its zero value it round-trips even when dropped.
+		SessionID:     storage.NewID(),
 		ConnectorID:   "ldap",
 		ConnectorData: []byte(`{"some":"data"}`),
 		PKCE: storage.PKCE{
@@ -216,6 +267,7 @@ func testAuthCodeCRUD(t *testing.T, s storage.Storage) {
 		Nonce:         "foobar",
 		Scopes:        []string{"openid", "email"},
 		Expiry:        neverExpire,
+		AuthTime:      defaultAuthTime,
 		ConnectorID:   "ldap",
 		ConnectorData: []byte(`{"some":"data"}`),
 		Claims: storage.Claims{
@@ -235,41 +287,48 @@ func testAuthCodeCRUD(t *testing.T, s storage.Storage) {
 		t.Fatalf("failed creating auth code: %v", err)
 	}
 
-	got, err := s.GetAuthCode(a1.ID)
+	got, err := s.GetAuthCode(ctx, a1.ID)
 	if err != nil {
 		t.Fatalf("failed to get auth code: %v", err)
 	}
 	if a1.Expiry.Unix() != got.Expiry.Unix() {
 		t.Errorf("auth code expiry did not match want=%s vs got=%s", a1.Expiry, got.Expiry)
 	}
-	got.Expiry = a1.Expiry // time fields do not compare well
+	got.Expiry = a1.Expiry     // time fields do not compare well
+	got.AuthTime = a1.AuthTime // time fields do not compare well
 	if diff := pretty.Compare(a1, got); diff != "" {
 		t.Errorf("auth code retrieved from storage did not match: %s", diff)
 	}
 
-	if err := s.DeleteAuthCode(a1.ID); err != nil {
+	if err := s.DeleteAuthCode(ctx, a1.ID); err != nil {
 		t.Fatalf("delete auth code: %v", err)
 	}
 
-	if err := s.DeleteAuthCode(a2.ID); err != nil {
+	if err := s.DeleteAuthCode(ctx, a2.ID); err != nil {
 		t.Fatalf("delete auth code: %v", err)
 	}
 
-	_, err = s.GetAuthCode(a1.ID)
+	_, err = s.GetAuthCode(ctx, a1.ID)
 	mustBeErrNotFound(t, "auth code", err)
 }
 
 func testClientCRUD(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	id1 := storage.NewID()
 	c1 := storage.Client{
-		ID:           id1,
-		Secret:       "foobar",
-		RedirectURIs: []string{"foo://bar.com/", "https://auth.example.com"},
-		Name:         "dex client",
-		LogoURL:      "https://goo.gl/JIyzIC",
+		ID:                id1,
+		Secret:            "foobar",
+		RedirectURIs:      []string{"foo://bar.com/", "https://auth.example.com"},
+		Name:              "dex client",
+		LogoURL:           "https://goo.gl/JIyzIC",
+		AllowedConnectors: []string{"github", "google"},
+		// Explicitly persisted fields: at their zero values they round-trip even
+		// when a backend drops them.
+		BackchannelLogoutURI:   "https://auth.example.com/backchannel-logout",
+		PostLogoutRedirectURIs: []string{"https://auth.example.com/"},
+		RefreshTokenLifetime:   storage.RefreshTokenLifetimeSession,
 	}
-	err := s.DeleteClient(id1)
+	err := s.DeleteClient(ctx, id1)
 	mustBeErrNotFound(t, "client", err)
 
 	if err := s.CreateClient(ctx, c1); err != nil {
@@ -294,7 +353,7 @@ func testClientCRUD(t *testing.T, s storage.Storage) {
 	}
 
 	getAndCompare := func(_ string, want storage.Client) {
-		gc, err := s.GetClient(id1)
+		gc, err := s.GetClient(ctx, id1)
 		if err != nil {
 			t.Errorf("get client: %v", err)
 			return
@@ -307,7 +366,7 @@ func testClientCRUD(t *testing.T, s storage.Storage) {
 	getAndCompare(id1, c1)
 
 	newSecret := "barfoo"
-	err = s.UpdateClient(id1, func(old storage.Client) (storage.Client, error) {
+	err = s.UpdateClient(ctx, id1, func(old storage.Client) (storage.Client, error) {
 		old.Secret = newSecret
 		return old, nil
 	})
@@ -317,20 +376,68 @@ func testClientCRUD(t *testing.T, s storage.Storage) {
 	c1.Secret = newSecret
 	getAndCompare(id1, c1)
 
-	if err := s.DeleteClient(id1); err != nil {
+	// An update carries those same fields, not just the one it changes.
+	err = s.UpdateClient(ctx, id1, func(old storage.Client) (storage.Client, error) {
+		old.RefreshTokenLifetime = storage.RefreshTokenLifetimeStandalone
+		old.BackchannelLogoutURI = "https://auth.example.com/logout-2"
+		return old, nil
+	})
+	if err != nil {
+		t.Errorf("update client: %v", err)
+	}
+	c1.RefreshTokenLifetime = storage.RefreshTokenLifetimeStandalone
+	c1.BackchannelLogoutURI = "https://auth.example.com/logout-2"
+	getAndCompare(id1, c1)
+
+	// Verify SSOSharedWith nil vs empty slice roundtrip.
+	err = s.UpdateClient(ctx, id1, func(old storage.Client) (storage.Client, error) {
+		old.SSOSharedWith = []string{}
+		return old, nil
+	})
+	if err != nil {
+		t.Fatalf("update client ssoSharedWith to empty: %v", err)
+	}
+	gc, err := s.GetClient(ctx, id1)
+	if err != nil {
+		t.Fatalf("get client: %v", err)
+	}
+	if gc.SSOSharedWith == nil {
+		t.Error("expected empty slice for SSOSharedWith, got nil")
+	}
+	if len(gc.SSOSharedWith) != 0 {
+		t.Errorf("expected empty SSOSharedWith, got %v", gc.SSOSharedWith)
+	}
+
+	// Verify nil SSOSharedWith stays nil after roundtrip.
+	err = s.UpdateClient(ctx, id1, func(old storage.Client) (storage.Client, error) {
+		old.SSOSharedWith = nil
+		return old, nil
+	})
+	if err != nil {
+		t.Fatalf("update client ssoSharedWith to nil: %v", err)
+	}
+	gc, err = s.GetClient(ctx, id1)
+	if err != nil {
+		t.Fatalf("get client: %v", err)
+	}
+	if gc.SSOSharedWith != nil {
+		t.Errorf("expected nil SSOSharedWith, got %v", gc.SSOSharedWith)
+	}
+
+	if err := s.DeleteClient(ctx, id1); err != nil {
 		t.Fatalf("delete client: %v", err)
 	}
 
-	if err := s.DeleteClient(id2); err != nil {
+	if err := s.DeleteClient(ctx, id2); err != nil {
 		t.Fatalf("delete client: %v", err)
 	}
 
-	_, err = s.GetClient(id1)
+	_, err = s.GetClient(ctx, id1)
 	mustBeErrNotFound(t, "client", err)
 }
 
 func testRefreshTokenCRUD(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	id := storage.NewID()
 	refresh := storage.RefreshToken{
 		ID:            id,
@@ -360,7 +467,7 @@ func testRefreshTokenCRUD(t *testing.T, s storage.Storage) {
 	mustBeErrAlreadyExists(t, "refresh token", err)
 
 	getAndCompare := func(id string, want storage.RefreshToken) {
-		gr, err := s.GetRefresh(id)
+		gr, err := s.GetRefresh(ctx, id)
 		if err != nil {
 			t.Errorf("get refresh: %v", err)
 			return
@@ -420,7 +527,7 @@ func testRefreshTokenCRUD(t *testing.T, s storage.Storage) {
 		r.LastUsed = updatedAt
 		return r, nil
 	}
-	if err := s.UpdateRefreshToken(id, updater); err != nil {
+	if err := s.UpdateRefreshToken(ctx, id, updater); err != nil {
 		t.Errorf("failed to update refresh token: %v", err)
 	}
 	refresh.Token = "spam"
@@ -430,15 +537,15 @@ func testRefreshTokenCRUD(t *testing.T, s storage.Storage) {
 	// Ensure that updating the first token doesn't impact the second. Issue #847.
 	getAndCompare(id2, refresh2)
 
-	if err := s.DeleteRefresh(id); err != nil {
+	if err := s.DeleteRefresh(ctx, id); err != nil {
 		t.Fatalf("failed to delete refresh request: %v", err)
 	}
 
-	if err := s.DeleteRefresh(id2); err != nil {
+	if err := s.DeleteRefresh(ctx, id2); err != nil {
 		t.Fatalf("failed to delete refresh request: %v", err)
 	}
 
-	_, err = s.GetRefresh(id)
+	_, err = s.GetRefresh(ctx, id)
 	mustBeErrNotFound(t, "refresh token", err)
 }
 
@@ -448,8 +555,12 @@ func (n byEmail) Len() int           { return len(n) }
 func (n byEmail) Less(i, j int) bool { return n[i].Email < n[j].Email }
 func (n byEmail) Swap(i, j int)      { n[i], n[j] = n[j], n[i] }
 
+func boolPtr(v bool) *bool {
+	return &v
+}
+
 func testPasswordCRUD(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	// Use bcrypt.MinCost to keep the tests short.
 	passwordHash1, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
 	if err != nil {
@@ -457,10 +568,14 @@ func testPasswordCRUD(t *testing.T, s storage.Storage) {
 	}
 
 	password1 := storage.Password{
-		Email:    "jane@example.com",
-		Hash:     passwordHash1,
-		Username: "jane",
-		UserID:   "foobar",
+		Email:             "jane@example.com",
+		Hash:              passwordHash1,
+		Username:          "jane",
+		Name:              "Jane Doe",
+		PreferredUsername: "jane-public",
+		EmailVerified:     boolPtr(true),
+		UserID:            "foobar",
+		Groups:            []string{"team-a", "team-a/admins"},
 	}
 	if err := s.CreatePassword(ctx, password1); err != nil {
 		t.Fatalf("create password token: %v", err)
@@ -476,17 +591,21 @@ func testPasswordCRUD(t *testing.T, s storage.Storage) {
 	}
 
 	password2 := storage.Password{
-		Email:    "john@example.com",
-		Hash:     passwordHash2,
-		Username: "john",
-		UserID:   "barfoo",
+		Email:             "john@example.com",
+		Hash:              passwordHash2,
+		Username:          "john",
+		Name:              "John Smith",
+		PreferredUsername: "john-public",
+		EmailVerified:     boolPtr(false),
+		UserID:            "barfoo",
+		Groups:            []string{"team-b"},
 	}
 	if err := s.CreatePassword(ctx, password2); err != nil {
 		t.Fatalf("create password token: %v", err)
 	}
 
 	getAndCompare := func(id string, want storage.Password) {
-		gr, err := s.GetPassword(id)
+		gr, err := s.GetPassword(ctx, id)
 		if err != nil {
 			t.Errorf("get password %q: %v", id, err)
 			return
@@ -499,7 +618,7 @@ func testPasswordCRUD(t *testing.T, s storage.Storage) {
 	getAndCompare("jane@example.com", password1)
 	getAndCompare("JANE@example.com", password1) // Emails should be case insensitive
 
-	if err := s.UpdatePassword(password1.Email, func(old storage.Password) (storage.Password, error) {
+	if err := s.UpdatePassword(ctx, password1.Email, func(old storage.Password) (storage.Password, error) {
 		old.Username = "jane doe"
 		return old, nil
 	}); err != nil {
@@ -509,11 +628,10 @@ func testPasswordCRUD(t *testing.T, s storage.Storage) {
 	password1.Username = "jane doe"
 	getAndCompare("jane@example.com", password1)
 
-	var passwordList []storage.Password
-	passwordList = append(passwordList, password1, password2)
+	passwordList := []storage.Password{password1, password2}
 
 	listAndCompare := func(want []storage.Password) {
-		passwords, err := s.ListPasswords()
+		passwords, err := s.ListPasswords(ctx)
 		if err != nil {
 			t.Errorf("list password: %v", err)
 			return
@@ -527,20 +645,20 @@ func testPasswordCRUD(t *testing.T, s storage.Storage) {
 
 	listAndCompare(passwordList)
 
-	if err := s.DeletePassword(password1.Email); err != nil {
+	if err := s.DeletePassword(ctx, password1.Email); err != nil {
 		t.Fatalf("failed to delete password: %v", err)
 	}
 
-	if err := s.DeletePassword(password2.Email); err != nil {
+	if err := s.DeletePassword(ctx, password2.Email); err != nil {
 		t.Fatalf("failed to delete password: %v", err)
 	}
 
-	_, err = s.GetPassword(password1.Email)
+	_, err = s.GetPassword(ctx, password1.Email)
 	mustBeErrNotFound(t, "password", err)
 }
 
 func testOfflineSessionCRUD(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	userID1 := storage.NewID()
 	session1 := storage.OfflineSessions{
 		UserID:        userID1,
@@ -572,7 +690,7 @@ func testOfflineSessionCRUD(t *testing.T, s storage.Storage) {
 	}
 
 	getAndCompare := func(userID string, connID string, want storage.OfflineSessions) {
-		gr, err := s.GetOfflineSessions(userID, connID)
+		gr, err := s.GetOfflineSessions(ctx, userID, connID)
 		if err != nil {
 			t.Errorf("get offline session: %v", err)
 			return
@@ -593,7 +711,7 @@ func testOfflineSessionCRUD(t *testing.T, s storage.Storage) {
 	}
 	session1.Refresh[tokenRef.ClientID] = &tokenRef
 
-	if err := s.UpdateOfflineSessions(session1.UserID, session1.ConnID, func(old storage.OfflineSessions) (storage.OfflineSessions, error) {
+	if err := s.UpdateOfflineSessions(ctx, session1.UserID, session1.ConnID, func(old storage.OfflineSessions) (storage.OfflineSessions, error) {
 		old.Refresh[tokenRef.ClientID] = &tokenRef
 		return old, nil
 	}); err != nil {
@@ -602,27 +720,28 @@ func testOfflineSessionCRUD(t *testing.T, s storage.Storage) {
 
 	getAndCompare(userID1, "Conn1", session1)
 
-	if err := s.DeleteOfflineSessions(session1.UserID, session1.ConnID); err != nil {
+	if err := s.DeleteOfflineSessions(ctx, session1.UserID, session1.ConnID); err != nil {
 		t.Fatalf("failed to delete offline session: %v", err)
 	}
 
-	if err := s.DeleteOfflineSessions(session2.UserID, session2.ConnID); err != nil {
+	if err := s.DeleteOfflineSessions(ctx, session2.UserID, session2.ConnID); err != nil {
 		t.Fatalf("failed to delete offline session: %v", err)
 	}
 
-	_, err = s.GetOfflineSessions(session1.UserID, session1.ConnID)
+	_, err = s.GetOfflineSessions(ctx, session1.UserID, session1.ConnID)
 	mustBeErrNotFound(t, "offline session", err)
 }
 
 func testConnectorCRUD(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	id1 := storage.NewID()
 	config1 := []byte(`{"issuer": "https://accounts.google.com"}`)
 	c1 := storage.Connector{
-		ID:     id1,
-		Type:   "Default",
-		Name:   "Default",
-		Config: config1,
+		ID:         id1,
+		Type:       "Default",
+		Name:       "Default",
+		Config:     config1,
+		GrantTypes: []string{"authorization_code", "refresh_token"},
 	}
 
 	if err := s.CreateConnector(ctx, c1); err != nil {
@@ -647,7 +766,7 @@ func testConnectorCRUD(t *testing.T, s storage.Storage) {
 	}
 
 	getAndCompare := func(id string, want storage.Connector) {
-		gr, err := s.GetConnector(id)
+		gr, err := s.GetConnector(ctx, id)
 		if err != nil {
 			t.Errorf("get connector: %v", err)
 			return
@@ -661,19 +780,21 @@ func testConnectorCRUD(t *testing.T, s storage.Storage) {
 
 	getAndCompare(id1, c1)
 
-	if err := s.UpdateConnector(c1.ID, func(old storage.Connector) (storage.Connector, error) {
+	if err := s.UpdateConnector(ctx, c1.ID, func(old storage.Connector) (storage.Connector, error) {
 		old.Type = "oidc"
+		old.GrantTypes = []string{"urn:ietf:params:oauth:grant-type:token-exchange"}
 		return old, nil
 	}); err != nil {
 		t.Fatalf("failed to update Connector: %v", err)
 	}
 
 	c1.Type = "oidc"
+	c1.GrantTypes = []string{"urn:ietf:params:oauth:grant-type:token-exchange"}
 	getAndCompare(id1, c1)
 
 	connectorList := []storage.Connector{c1, c2}
 	listAndCompare := func(want []storage.Connector) {
-		connectors, err := s.ListConnectors()
+		connectors, err := s.ListConnectors(ctx)
 		if err != nil {
 			t.Errorf("list connectors: %v", err)
 			return
@@ -691,69 +812,86 @@ func testConnectorCRUD(t *testing.T, s storage.Storage) {
 	}
 	listAndCompare(connectorList)
 
-	if err := s.DeleteConnector(c1.ID); err != nil {
+	if err := s.DeleteConnector(ctx, c1.ID); err != nil {
 		t.Fatalf("failed to delete connector: %v", err)
 	}
 
-	if err := s.DeleteConnector(c2.ID); err != nil {
+	if err := s.DeleteConnector(ctx, c2.ID); err != nil {
 		t.Fatalf("failed to delete connector: %v", err)
 	}
 
-	_, err = s.GetConnector(c1.ID)
+	_, err = s.GetConnector(ctx, c1.ID)
 	mustBeErrNotFound(t, "connector", err)
 }
 
 func testKeysCRUD(t *testing.T, s storage.Storage) {
-	updateAndCompare := func(k storage.Keys) {
-		err := s.UpdateKeys(func(oldKeys storage.Keys) (storage.Keys, error) {
-			return k, nil
-		})
-		if err != nil {
-			t.Errorf("failed to update keys: %v", err)
-			return
-		}
-
-		if got, err := s.GetKeys(); err != nil {
-			t.Errorf("failed to get keys: %v", err)
-		} else {
-			got.NextRotation = got.NextRotation.UTC()
-			if diff := pretty.Compare(k, got); diff != "" {
-				t.Errorf("got keys did not equal expected: %s", diff)
-			}
-		}
-	}
+	ctx := t.Context()
 
 	// Postgres isn't as accurate with nano seconds as we'd like
 	n := time.Now().UTC().Round(time.Second)
 
-	keys1 := storage.Keys{
-		SigningKey:    jsonWebKeys[0].Private,
-		SigningKeyPub: jsonWebKeys[0].Public,
-		NextRotation:  n,
-	}
-
-	keys2 := storage.Keys{
-		SigningKey:    jsonWebKeys[2].Private,
-		SigningKeyPub: jsonWebKeys[2].Public,
-		NextRotation:  n.Add(time.Hour),
-		VerificationKeys: []storage.VerificationKey{
-			{
-				PublicKey: jsonWebKeys[0].Public,
-				Expiry:    n.Add(time.Hour),
+	tests := []struct {
+		name string
+		keys storage.Keys
+	}{
+		{
+			name: "rsa signing key",
+			keys: storage.Keys{
+				SigningKey:    jsonWebKeys[0].Private,
+				SigningKeyPub: jsonWebKeys[0].Public,
+				NextRotation:  n,
 			},
-			{
-				PublicKey: jsonWebKeys[1].Public,
-				Expiry:    n.Add(time.Hour * 2),
+		},
+		{
+			name: "es256 signing key",
+			keys: storage.Keys{
+				SigningKey:    jsonWebKeys[5].Private,
+				SigningKeyPub: jsonWebKeys[5].Public,
+				NextRotation:  n.Add(time.Hour),
+			},
+		},
+		{
+			name: "mixed verification key algorithms",
+			keys: storage.Keys{
+				SigningKey:    jsonWebKeys[6].Private,
+				SigningKeyPub: jsonWebKeys[6].Public,
+				NextRotation:  n.Add(2 * time.Hour),
+				VerificationKeys: []storage.VerificationKey{
+					{
+						PublicKey: jsonWebKeys[1].Public,
+						Expiry:    n.Add(3 * time.Hour),
+					},
+					{
+						PublicKey: jsonWebKeys[5].Public,
+						Expiry:    n.Add(4 * time.Hour),
+					},
+				},
 			},
 		},
 	}
 
-	updateAndCompare(keys1)
-	updateAndCompare(keys2)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := s.UpdateKeys(ctx, func(oldKeys storage.Keys) (storage.Keys, error) {
+				return tt.keys, nil
+			})
+			require.NoError(t, err)
+
+			got, err := s.GetKeys(ctx)
+			require.NoError(t, err)
+
+			got.NextRotation = got.NextRotation.UTC()
+			if diff := pretty.Compare(tt.keys, got); diff != "" {
+				t.Fatalf("got keys did not equal expected: %s", diff)
+			}
+
+			requireSigningKeyRoundTripUsable(t, got)
+		})
+	}
 }
 
 func testGC(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	est, err := time.LoadLocation("America/New_York")
 	if err != nil {
 		t.Fatal(err)
@@ -771,6 +909,7 @@ func testGC(t *testing.T, s storage.Storage) {
 		Nonce:         "foobar",
 		Scopes:        []string{"openid", "email"},
 		Expiry:        expiry,
+		AuthTime:      defaultAuthTime,
 		ConnectorID:   "ldap",
 		ConnectorData: []byte(`{"some":"data"}`),
 		Claims: storage.Claims{
@@ -787,24 +926,24 @@ func testGC(t *testing.T, s storage.Storage) {
 	}
 
 	for _, tz := range []*time.Location{time.UTC, est, pst} {
-		result, err := s.GarbageCollect(expiry.Add(-time.Hour).In(tz))
+		result, err := s.GarbageCollect(ctx, expiry.Add(-time.Hour).In(tz))
 		if err != nil {
 			t.Errorf("garbage collection failed: %v", err)
 		} else if result.AuthCodes != 0 || result.AuthRequests != 0 {
 			t.Errorf("expected no garbage collection results, got %#v", result)
 		}
-		if _, err := s.GetAuthCode(c.ID); err != nil {
+		if _, err := s.GetAuthCode(ctx, c.ID); err != nil {
 			t.Errorf("expected to be able to get auth code after GC: %v", err)
 		}
 	}
 
-	if r, err := s.GarbageCollect(expiry.Add(time.Hour)); err != nil {
+	if r, err := s.GarbageCollect(ctx, expiry.Add(time.Hour)); err != nil {
 		t.Errorf("garbage collection failed: %v", err)
 	} else if r.AuthCodes != 1 {
 		t.Errorf("expected to garbage collect 1 objects, got %d", r.AuthCodes)
 	}
 
-	if _, err := s.GetAuthCode(c.ID); err == nil {
+	if _, err := s.GetAuthCode(ctx, c.ID); err == nil {
 		t.Errorf("expected auth code to be GC'd")
 	} else if err != storage.ErrNotFound {
 		t.Errorf("expected storage.ErrNotFound, got %v", err)
@@ -821,6 +960,7 @@ func testGC(t *testing.T, s storage.Storage) {
 		ForceApprovalPrompt: true,
 		LoggedIn:            true,
 		Expiry:              expiry,
+		AuthTime:            defaultAuthTime,
 		ConnectorID:         "ldap",
 		ConnectorData:       []byte(`{"some":"data"}`),
 		Claims: storage.Claims{
@@ -838,24 +978,24 @@ func testGC(t *testing.T, s storage.Storage) {
 	}
 
 	for _, tz := range []*time.Location{time.UTC, est, pst} {
-		result, err := s.GarbageCollect(expiry.Add(-time.Hour).In(tz))
+		result, err := s.GarbageCollect(ctx, expiry.Add(-time.Hour).In(tz))
 		if err != nil {
 			t.Errorf("garbage collection failed: %v", err)
 		} else if result.AuthCodes != 0 || result.AuthRequests != 0 {
 			t.Errorf("expected no garbage collection results, got %#v", result)
 		}
-		if _, err := s.GetAuthRequest(a.ID); err != nil {
+		if _, err := s.GetAuthRequest(ctx, a.ID); err != nil {
 			t.Errorf("expected to be able to get auth request after GC: %v", err)
 		}
 	}
 
-	if r, err := s.GarbageCollect(expiry.Add(time.Hour)); err != nil {
+	if r, err := s.GarbageCollect(ctx, expiry.Add(time.Hour)); err != nil {
 		t.Errorf("garbage collection failed: %v", err)
 	} else if r.AuthRequests != 1 {
 		t.Errorf("expected to garbage collect 1 objects, got %d", r.AuthRequests)
 	}
 
-	if _, err := s.GetAuthRequest(a.ID); err == nil {
+	if _, err := s.GetAuthRequest(ctx, a.ID); err == nil {
 		t.Errorf("expected auth request to be GC'd")
 	} else if err != storage.ErrNotFound {
 		t.Errorf("expected storage.ErrNotFound, got %v", err)
@@ -875,23 +1015,23 @@ func testGC(t *testing.T, s storage.Storage) {
 	}
 
 	for _, tz := range []*time.Location{time.UTC, est, pst} {
-		result, err := s.GarbageCollect(expiry.Add(-time.Hour).In(tz))
+		result, err := s.GarbageCollect(ctx, expiry.Add(-time.Hour).In(tz))
 		if err != nil {
 			t.Errorf("garbage collection failed: %v", err)
 		} else if result.DeviceRequests != 0 {
 			t.Errorf("expected no device garbage collection results, got %#v", result)
 		}
-		if _, err := s.GetDeviceRequest(d.UserCode); err != nil {
+		if _, err := s.GetDeviceRequest(ctx, d.UserCode); err != nil {
 			t.Errorf("expected to be able to get auth request after GC: %v", err)
 		}
 	}
-	if r, err := s.GarbageCollect(expiry.Add(time.Hour)); err != nil {
+	if r, err := s.GarbageCollect(ctx, expiry.Add(time.Hour)); err != nil {
 		t.Errorf("garbage collection failed: %v", err)
 	} else if r.DeviceRequests != 1 {
 		t.Errorf("expected to garbage collect 1 device request, got %d", r.DeviceRequests)
 	}
 
-	if _, err := s.GetDeviceRequest(d.UserCode); err == nil {
+	if _, err := s.GetDeviceRequest(ctx, d.UserCode); err == nil {
 		t.Errorf("expected device request to be GC'd")
 	} else if err != storage.ErrNotFound {
 		t.Errorf("expected storage.ErrNotFound, got %v", err)
@@ -915,33 +1055,130 @@ func testGC(t *testing.T, s storage.Storage) {
 	}
 
 	for _, tz := range []*time.Location{time.UTC, est, pst} {
-		result, err := s.GarbageCollect(expiry.Add(-time.Hour).In(tz))
+		result, err := s.GarbageCollect(ctx, expiry.Add(-time.Hour).In(tz))
 		if err != nil {
 			t.Errorf("garbage collection failed: %v", err)
 		} else if result.DeviceTokens != 0 {
 			t.Errorf("expected no device token garbage collection results, got %#v", result)
 		}
-		if _, err := s.GetDeviceToken(dt.DeviceCode); err != nil {
+		if _, err := s.GetDeviceToken(ctx, dt.DeviceCode); err != nil {
 			t.Errorf("expected to be able to get device token after GC: %v", err)
 		}
 	}
-	if r, err := s.GarbageCollect(expiry.Add(time.Hour)); err != nil {
+	if r, err := s.GarbageCollect(ctx, expiry.Add(time.Hour)); err != nil {
 		t.Errorf("garbage collection failed: %v", err)
 	} else if r.DeviceTokens != 1 {
 		t.Errorf("expected to garbage collect 1 device token, got %d", r.DeviceTokens)
 	}
 
-	if _, err := s.GetDeviceToken(dt.DeviceCode); err == nil {
+	if _, err := s.GetDeviceToken(ctx, dt.DeviceCode); err == nil {
 		t.Errorf("expected device token to be GC'd")
 	} else if err != storage.ErrNotFound {
 		t.Errorf("expected storage.ErrNotFound, got %v", err)
+	}
+
+	// Test auth session GC.
+	authSession := storage.AuthSession{
+		ID:          storage.NewID(),
+		Secret:      storage.NewID(),
+		UserID:      "gc-user",
+		ConnectorID: "gc-conn",
+		ClientStates: map[string]*storage.ClientAuthState{
+			"client1": {AuthenticatedAt: expiry, LastActivity: expiry},
+		},
+		CreatedAt:      expiry.Add(-time.Hour),
+		LastActivity:   expiry.Add(-time.Hour),
+		AbsoluteExpiry: expiry,
+		IdleExpiry:     expiry,
+	}
+
+	if err := s.CreateAuthSession(ctx, authSession); err != nil {
+		t.Fatalf("failed creating auth session: %v", err)
+	}
+
+	// GC before expiry should not delete.
+	for _, tz := range []*time.Location{time.UTC, est, pst} {
+		result, err := s.GarbageCollect(ctx, expiry.Add(-time.Hour).In(tz))
+		if err != nil {
+			t.Errorf("garbage collection failed: %v", err)
+		} else if result.AuthSessions != 0 {
+			t.Errorf("expected no auth session garbage collection results, got %#v", result)
+		}
+		if _, err := s.GetAuthSession(ctx, authSession.ID); err != nil {
+			t.Errorf("expected to be able to get auth session after GC: %v", err)
+		}
+	}
+
+	// GC after expiry should delete.
+	if r, err := s.GarbageCollect(ctx, expiry.Add(time.Hour)); err != nil {
+		t.Errorf("garbage collection failed: %v", err)
+	} else if r.AuthSessions != 1 {
+		t.Errorf("expected to garbage collect 1 auth session, got %d", r.AuthSessions)
+	}
+
+	if _, err := s.GetAuthSession(ctx, authSession.ID); err == nil {
+		t.Errorf("expected auth session to be GC'd")
+	} else if err != storage.ErrNotFound {
+		t.Errorf("expected storage.ErrNotFound, got %v", err)
+	}
+
+	// Test auth session GC: absolute expired, idle still valid.
+	absExpiredSession := storage.AuthSession{
+		ID:          storage.NewID(),
+		Secret:      storage.NewID(),
+		UserID:      "gc-abs-expired",
+		ConnectorID: "gc-conn",
+		ClientStates: map[string]*storage.ClientAuthState{
+			"client1": {AuthenticatedAt: expiry, LastActivity: expiry},
+		},
+		CreatedAt:      expiry.Add(-25 * time.Hour),
+		LastActivity:   expiry.Add(-time.Minute),
+		AbsoluteExpiry: expiry.Add(-time.Hour), // expired
+		IdleExpiry:     expiry.Add(time.Hour),  // still valid
+	}
+	if err := s.CreateAuthSession(ctx, absExpiredSession); err != nil {
+		t.Fatalf("failed creating abs-expired auth session: %v", err)
+	}
+	if r, err := s.GarbageCollect(ctx, expiry); err != nil {
+		t.Errorf("garbage collection failed: %v", err)
+	} else if r.AuthSessions != 1 {
+		t.Errorf("expected to garbage collect 1 auth session (absolute expired), got %d", r.AuthSessions)
+	}
+	if _, err := s.GetAuthSession(ctx, absExpiredSession.ID); err == nil {
+		t.Errorf("expected abs-expired auth session to be GC'd")
+	}
+
+	// Test auth session GC: absolute still valid, idle expired.
+	idleExpiredSession := storage.AuthSession{
+		ID:          storage.NewID(),
+		Secret:      storage.NewID(),
+		UserID:      "gc-idle-expired",
+		ConnectorID: "gc-conn",
+		ClientStates: map[string]*storage.ClientAuthState{
+			"client1": {AuthenticatedAt: expiry, LastActivity: expiry},
+		},
+		CreatedAt:      expiry.Add(-time.Hour),
+		LastActivity:   expiry.Add(-2 * time.Hour),
+		AbsoluteExpiry: expiry.Add(23 * time.Hour), // still valid
+		IdleExpiry:     expiry.Add(-time.Hour),     // expired
+	}
+	if err := s.CreateAuthSession(ctx, idleExpiredSession); err != nil {
+		t.Fatalf("failed creating idle-expired auth session: %v", err)
+	}
+	if r, err := s.GarbageCollect(ctx, expiry); err != nil {
+		t.Errorf("garbage collection failed: %v", err)
+	} else if r.AuthSessions != 1 {
+		t.Errorf("expected to garbage collect 1 auth session (idle expired), got %d", r.AuthSessions)
+	}
+	if _, err := s.GetAuthSession(ctx, idleExpiredSession.ID); err == nil {
+		t.Errorf("expected idle-expired auth session to be GC'd")
 	}
 }
 
 // testTimezones tests that backends either fully support timezones or
 // do the correct standardization.
 func testTimezones(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	est, err := time.LoadLocation("America/New_York")
 	if err != nil {
 		t.Fatal(err)
@@ -957,6 +1194,7 @@ func testTimezones(t *testing.T, s storage.Storage) {
 		Nonce:         "foobar",
 		Scopes:        []string{"openid", "email"},
 		Expiry:        expiry,
+		AuthTime:      defaultAuthTime,
 		ConnectorID:   "ldap",
 		ConnectorData: []byte(`{"some":"data"}`),
 		Claims: storage.Claims{
@@ -970,7 +1208,7 @@ func testTimezones(t *testing.T, s storage.Storage) {
 	if err := s.CreateAuthCode(ctx, c); err != nil {
 		t.Fatalf("failed creating auth code: %v", err)
 	}
-	got, err := s.GetAuthCode(c.ID)
+	got, err := s.GetAuthCode(ctx, c.ID)
 	if err != nil {
 		t.Fatalf("failed to get auth code: %v", err)
 	}
@@ -986,7 +1224,7 @@ func testTimezones(t *testing.T, s storage.Storage) {
 }
 
 func testDeviceRequestCRUD(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	d1 := storage.DeviceRequest{
 		UserCode:     storage.NewUserCode(),
 		DeviceCode:   storage.NewID(),
@@ -1004,10 +1242,18 @@ func testDeviceRequestCRUD(t *testing.T, s storage.Storage) {
 	err := s.CreateDeviceRequest(ctx, d1)
 	mustBeErrAlreadyExists(t, "device request", err)
 
-	got, err := s.GetDeviceRequest(d1.UserCode)
+	got, err := s.GetDeviceRequest(ctx, d1.UserCode)
 	if err != nil {
 		t.Fatalf("failed to get device request: %v", err)
 	}
+
+	// Storage backends are not expected to preserve the time.Location of the
+	// stored value, only the instant. Postgres, for example, returns the
+	// expiry in a loaded "Etc/UTC" location rather than the time.UTC
+	// singleton, which makes reflect.DeepEqual (used by require.Equal)
+	// report a difference even though the two times are the same instant.
+	// Normalize to UTC before comparing, matching the other CRUD tests.
+	got.Expiry = got.Expiry.UTC()
 
 	require.Equal(t, d1, got)
 
@@ -1016,7 +1262,7 @@ func testDeviceRequestCRUD(t *testing.T, s storage.Storage) {
 }
 
 func testDeviceTokenCRUD(t *testing.T, s storage.Storage) {
-	ctx := context.Background()
+	ctx := t.Context()
 	codeChallenge := storage.PKCE{
 		CodeChallenge:       "code_challenge_test",
 		CodeChallengeMethod: "plain",
@@ -1042,7 +1288,7 @@ func testDeviceTokenCRUD(t *testing.T, s storage.Storage) {
 	mustBeErrAlreadyExists(t, "device token", err)
 
 	// Update the device token, simulate a redemption
-	if err := s.UpdateDeviceToken(d1.DeviceCode, func(old storage.DeviceToken) (storage.DeviceToken, error) {
+	if err := s.UpdateDeviceToken(ctx, d1.DeviceCode, func(old storage.DeviceToken) (storage.DeviceToken, error) {
 		old.Token = "token data"
 		old.Status = "complete"
 		return old, nil
@@ -1051,7 +1297,7 @@ func testDeviceTokenCRUD(t *testing.T, s storage.Storage) {
 	}
 
 	// Retrieve the device token
-	got, err := s.GetDeviceToken(d1.DeviceCode)
+	got, err := s.GetDeviceToken(ctx, d1.DeviceCode)
 	if err != nil {
 		t.Fatalf("failed to get device token: %v", err)
 	}
@@ -1066,4 +1312,196 @@ func testDeviceTokenCRUD(t *testing.T, s storage.Storage) {
 	if !reflect.DeepEqual(got.PKCE, codeChallenge) {
 		t.Fatalf("storage does not support PKCE, wanted challenge=%#v got %#v", codeChallenge, got.PKCE)
 	}
+}
+
+func testUserIdentityCRUD(t *testing.T, s storage.Storage) {
+	ctx := t.Context()
+
+	now := time.Now().UTC().Round(time.Millisecond)
+
+	u1 := storage.UserIdentity{
+		UserID:      "user1",
+		ConnectorID: "conn1",
+		Claims: storage.Claims{
+			UserID:        "user1",
+			Username:      "jane",
+			Email:         "jane@example.com",
+			EmailVerified: true,
+			Groups:        []string{"a", "b"},
+		},
+		Consents:     make(map[string][]string),
+		CreatedAt:    now,
+		LastLogin:    now,
+		BlockedUntil: time.Unix(0, 0).UTC(),
+	}
+
+	// Create with empty Consents map.
+	if err := s.CreateUserIdentity(ctx, u1); err != nil {
+		t.Fatalf("create user identity: %v", err)
+	}
+
+	// Duplicate create should return ErrAlreadyExists.
+	err := s.CreateUserIdentity(ctx, u1)
+	mustBeErrAlreadyExists(t, "user identity", err)
+
+	// Get and compare.
+	got, err := s.GetUserIdentity(ctx, u1.UserID, u1.ConnectorID)
+	if err != nil {
+		t.Fatalf("get user identity: %v", err)
+	}
+
+	got.CreatedAt = got.CreatedAt.UTC().Round(time.Millisecond)
+	got.LastLogin = got.LastLogin.UTC().Round(time.Millisecond)
+	got.BlockedUntil = got.BlockedUntil.UTC().Round(time.Millisecond)
+	u1.BlockedUntil = u1.BlockedUntil.UTC().Round(time.Millisecond)
+	if diff := pretty.Compare(u1, got); diff != "" {
+		t.Errorf("user identity retrieved from storage did not match: %s", diff)
+	}
+
+	// Update: add consent entry.
+	if err := s.UpdateUserIdentity(ctx, u1.UserID, u1.ConnectorID, func(old storage.UserIdentity) (storage.UserIdentity, error) {
+		old.Consents["client1"] = []string{"openid", "email"}
+		return old, nil
+	}); err != nil {
+		t.Fatalf("update user identity: %v", err)
+	}
+
+	// Get and verify updated consents.
+	got, err = s.GetUserIdentity(ctx, u1.UserID, u1.ConnectorID)
+	if err != nil {
+		t.Fatalf("get user identity after update: %v", err)
+	}
+	wantConsents := map[string][]string{"client1": {"openid", "email"}}
+	if diff := pretty.Compare(wantConsents, got.Consents); diff != "" {
+		t.Errorf("user identity consents did not match after update: %s", diff)
+	}
+
+	// List and verify.
+	identities, err := s.ListUserIdentities(ctx)
+	if err != nil {
+		t.Fatalf("list user identities: %v", err)
+	}
+	if len(identities) != 1 {
+		t.Fatalf("expected 1 user identity, got %d", len(identities))
+	}
+
+	// Delete.
+	if err := s.DeleteUserIdentity(ctx, u1.UserID, u1.ConnectorID); err != nil {
+		t.Fatalf("delete user identity: %v", err)
+	}
+
+	// Get deleted should return ErrNotFound.
+	_, err = s.GetUserIdentity(ctx, u1.UserID, u1.ConnectorID)
+	mustBeErrNotFound(t, "user identity", err)
+}
+
+func testAuthSessionCRUD(t *testing.T, s storage.Storage) {
+	ctx := t.Context()
+
+	now := time.Now().UTC().Round(time.Millisecond)
+
+	session := storage.AuthSession{
+		ID:          storage.NewID(),
+		Secret:      storage.NewID(),
+		UserID:      "user1",
+		ConnectorID: "conn1",
+		ClientStates: map[string]*storage.ClientAuthState{
+			"client1": {
+				AuthenticatedAt:   now,
+				LastActivity:      now,
+				LastTokenIssuedAt: now,
+			},
+		},
+		CreatedAt:      now,
+		LastActivity:   now,
+		IPAddress:      "192.168.1.1",
+		UserAgent:      "TestBrowser/1.0",
+		AbsoluteExpiry: now.Add(24 * time.Hour),
+		IdleExpiry:     now.Add(1 * time.Hour),
+		// A logout in flight: every backend has to carry it, or the upstream
+		// logout callback finds nothing to finish.
+		LogoutState: &storage.LogoutState{
+			PostLogoutRedirectURI: "https://app.example.com/",
+			State:                 "opaque",
+			ClientID:              "client1",
+			ConnectorID:           "conn1",
+		},
+	}
+
+	// Create.
+	if err := s.CreateAuthSession(ctx, session); err != nil {
+		t.Fatalf("create auth session: %v", err)
+	}
+
+	// Duplicate create should return ErrAlreadyExists.
+	err := s.CreateAuthSession(ctx, session)
+	mustBeErrAlreadyExists(t, "auth session", err)
+
+	// Get and compare.
+	got, err := s.GetAuthSession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("get auth session: %v", err)
+	}
+
+	got.CreatedAt = got.CreatedAt.UTC().Round(time.Millisecond)
+	got.LastActivity = got.LastActivity.UTC().Round(time.Millisecond)
+	got.AbsoluteExpiry = got.AbsoluteExpiry.UTC().Round(time.Millisecond)
+	got.IdleExpiry = got.IdleExpiry.UTC().Round(time.Millisecond)
+	for _, cs := range got.ClientStates {
+		cs.AuthenticatedAt = cs.AuthenticatedAt.UTC().Round(time.Millisecond)
+		cs.LastActivity = cs.LastActivity.UTC().Round(time.Millisecond)
+		cs.LastTokenIssuedAt = cs.LastTokenIssuedAt.UTC().Round(time.Millisecond)
+	}
+	if diff := pretty.Compare(session, got); diff != "" {
+		t.Errorf("auth session retrieved from storage did not match: %s", diff)
+	}
+
+	// Update: add a new client state.
+	newNow := now.Add(time.Minute)
+	if err := s.UpdateAuthSession(ctx, session.ID, func(old storage.AuthSession) (storage.AuthSession, error) {
+		old.ClientStates["client2"] = &storage.ClientAuthState{
+			AuthenticatedAt: newNow,
+			LastActivity:    newNow,
+		}
+		old.LastActivity = newNow
+		old.IdleExpiry = newNow.Add(time.Hour)
+		return old, nil
+	}); err != nil {
+		t.Fatalf("update auth session: %v", err)
+	}
+
+	// Get and verify update.
+	got, err = s.GetAuthSession(ctx, session.ID)
+	if err != nil {
+		t.Fatalf("get auth session after update: %v", err)
+	}
+	if len(got.ClientStates) != 2 {
+		t.Fatalf("expected 2 client states, got %d", len(got.ClientStates))
+	}
+	if got.ClientStates["client2"] == nil {
+		t.Fatal("expected client2 state to exist")
+	}
+	// The idle timeout has to move with the activity that reset it, or a session
+	// never outlives its first one.
+	if !got.IdleExpiry.UTC().Round(time.Millisecond).Equal(newNow.Add(time.Hour)) {
+		t.Errorf("expected idle expiry %v, got %v", newNow.Add(time.Hour), got.IdleExpiry)
+	}
+
+	// List and verify.
+	sessions, err := s.ListAuthSessions(ctx)
+	if err != nil {
+		t.Fatalf("list auth sessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 auth session, got %d", len(sessions))
+	}
+
+	// Delete.
+	if err := s.DeleteAuthSession(ctx, session.ID); err != nil {
+		t.Fatalf("delete auth session: %v", err)
+	}
+
+	// Get deleted should return ErrNotFound.
+	_, err = s.GetAuthSession(ctx, session.ID)
+	mustBeErrNotFound(t, "auth session", err)
 }

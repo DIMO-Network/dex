@@ -1,7 +1,6 @@
 package ent
 
 import (
-	"io"
 	"log/slog"
 	"testing"
 
@@ -9,8 +8,8 @@ import (
 	"github.com/dexidp/dex/storage/conformance"
 )
 
-func newSQLiteStorage() storage.Storage {
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+func newSQLiteStorage(t *testing.T) storage.Storage {
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	cfg := SQLite3{File: ":memory:"}
 	s, err := cfg.Open(logger)
@@ -22,4 +21,5 @@ func newSQLiteStorage() storage.Storage {
 
 func TestSQLite3(t *testing.T) {
 	conformance.RunTests(t, newSQLiteStorage)
+	conformance.RunConcurrencyTests(t, newSQLiteStorage)
 }

@@ -27,20 +27,17 @@ type CallbackConnectorFormPOST interface {
 
 // A Web3Connector verifies ownership of an Ethereum account.
 type Web3Connector interface {
-	// Infura ID returns the configured Infura ID if one was provided, or else the
-	// empty string.
-	InfuraID() string
-
 	// Verify checks that the given message was signed by the private key of the given
 	// account.
 	Verify(address, msg, signedMsg string) (identity Identity, err error)
 }
 
 // Web3SignerData is the ConnectorData the web3 connector attaches to an identity it
-// verified through ERC-1271 with a plain 65-byte ECDSA signature: the EOA that signed the
-// challenge. For a developer license, whose license account accepts a signature only when
+// verified through ERC-1271 with a plain 65-byte ECDSA signature: the address that signature
+// recovers to. For a developer license, whose license account accepts a signature only when
 // isSigner(recovered) is true, this is the license signer (API key) that minted the token.
-// The server emits it as the signer_address claim.
+// For any other contract wallet it means nothing. The server emits it as the signer_address
+// claim.
 type Web3SignerData struct {
 	SignerAddress string `json:"signer_address"`
 }

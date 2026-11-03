@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"strings"
@@ -60,6 +61,7 @@ type GCResult struct {
 	AuthCodes      int64
 	DeviceRequests int64
 	DeviceTokens   int64
+	AuthSessions   int64
 }
 
 // IsEmpty returns whether the garbage collection result is empty or not.
@@ -67,7 +69,8 @@ func (g *GCResult) IsEmpty() bool {
 	return g.AuthRequests == 0 &&
 		g.AuthCodes == 0 &&
 		g.DeviceRequests == 0 &&
-		g.DeviceTokens == 0
+		g.DeviceTokens == 0 &&
+		g.AuthSessions == 0
 }
 
 // Storage is the storage interface used by the server. Implementations are
@@ -83,36 +86,44 @@ type Storage interface {
 	CreateRefresh(ctx context.Context, r RefreshToken) error
 	CreatePassword(ctx context.Context, p Password) error
 	CreateOfflineSessions(ctx context.Context, s OfflineSessions) error
+	CreateUserIdentity(ctx context.Context, u UserIdentity) error
+	CreateAuthSession(ctx context.Context, s AuthSession) error
 	CreateConnector(ctx context.Context, c Connector) error
 	CreateDeviceRequest(ctx context.Context, d DeviceRequest) error
 	CreateDeviceToken(ctx context.Context, d DeviceToken) error
 
 	// TODO(ericchiang): return (T, bool, error) so we can indicate not found
 	// requests that way instead of using ErrNotFound.
-	GetAuthRequest(id string) (AuthRequest, error)
-	GetAuthCode(id string) (AuthCode, error)
-	GetClient(id string) (Client, error)
-	GetKeys() (Keys, error)
-	GetRefresh(id string) (RefreshToken, error)
-	GetPassword(email string) (Password, error)
-	GetOfflineSessions(userID string, connID string) (OfflineSessions, error)
-	GetConnector(id string) (Connector, error)
-	GetDeviceRequest(userCode string) (DeviceRequest, error)
-	GetDeviceToken(deviceCode string) (DeviceToken, error)
+	GetAuthRequest(ctx context.Context, id string) (AuthRequest, error)
+	GetAuthCode(ctx context.Context, id string) (AuthCode, error)
+	GetClient(ctx context.Context, id string) (Client, error)
+	GetKeys(ctx context.Context) (Keys, error)
+	GetRefresh(ctx context.Context, id string) (RefreshToken, error)
+	GetPassword(ctx context.Context, email string) (Password, error)
+	GetOfflineSessions(ctx context.Context, userID string, connID string) (OfflineSessions, error)
+	GetUserIdentity(ctx context.Context, userID, connectorID string) (UserIdentity, error)
+	GetAuthSession(ctx context.Context, id string) (AuthSession, error)
+	GetConnector(ctx context.Context, id string) (Connector, error)
+	GetDeviceRequest(ctx context.Context, userCode string) (DeviceRequest, error)
+	GetDeviceToken(ctx context.Context, deviceCode string) (DeviceToken, error)
 
-	ListClients() ([]Client, error)
-	ListRefreshTokens() ([]RefreshToken, error)
-	ListPasswords() ([]Password, error)
-	ListConnectors() ([]Connector, error)
+	ListClients(ctx context.Context) ([]Client, error)
+	ListRefreshTokens(ctx context.Context) ([]RefreshToken, error)
+	ListPasswords(ctx context.Context) ([]Password, error)
+	ListConnectors(ctx context.Context) ([]Connector, error)
+	ListUserIdentities(ctx context.Context) ([]UserIdentity, error)
+	ListAuthSessions(ctx context.Context) ([]AuthSession, error)
 
 	// Delete methods MUST be atomic.
-	DeleteAuthRequest(id string) error
-	DeleteAuthCode(code string) error
-	DeleteClient(id string) error
-	DeleteRefresh(id string) error
-	DeletePassword(email string) error
-	DeleteOfflineSessions(userID string, connID string) error
-	DeleteConnector(id string) error
+	DeleteAuthRequest(ctx context.Context, id string) error
+	DeleteAuthCode(ctx context.Context, code string) error
+	DeleteClient(ctx context.Context, id string) error
+	DeleteRefresh(ctx context.Context, id string) error
+	DeletePassword(ctx context.Context, email string) error
+	DeleteOfflineSessions(ctx context.Context, userID string, connID string) error
+	DeleteUserIdentity(ctx context.Context, userID, connectorID string) error
+	DeleteAuthSession(ctx context.Context, id string) error
+	DeleteConnector(ctx context.Context, id string) error
 
 	// Update methods take a function for updating an object then performs that update within
 	// a transaction. "updater" functions may be called multiple times by a single update call.
@@ -128,18 +139,20 @@ type Storage interface {
 	//			// update failed, handle error
 	//		}
 	//
-	UpdateClient(id string, updater func(old Client) (Client, error)) error
-	UpdateKeys(updater func(old Keys) (Keys, error)) error
-	UpdateAuthRequest(id string, updater func(a AuthRequest) (AuthRequest, error)) error
-	UpdateRefreshToken(id string, updater func(r RefreshToken) (RefreshToken, error)) error
-	UpdatePassword(email string, updater func(p Password) (Password, error)) error
-	UpdateOfflineSessions(userID string, connID string, updater func(s OfflineSessions) (OfflineSessions, error)) error
-	UpdateConnector(id string, updater func(c Connector) (Connector, error)) error
-	UpdateDeviceToken(deviceCode string, updater func(t DeviceToken) (DeviceToken, error)) error
+	UpdateClient(ctx context.Context, id string, updater func(old Client) (Client, error)) error
+	UpdateKeys(ctx context.Context, updater func(old Keys) (Keys, error)) error
+	UpdateAuthRequest(ctx context.Context, id string, updater func(a AuthRequest) (AuthRequest, error)) error
+	UpdateRefreshToken(ctx context.Context, id string, updater func(r RefreshToken) (RefreshToken, error)) error
+	UpdatePassword(ctx context.Context, email string, updater func(p Password) (Password, error)) error
+	UpdateOfflineSessions(ctx context.Context, userID string, connID string, updater func(s OfflineSessions) (OfflineSessions, error)) error
+	UpdateUserIdentity(ctx context.Context, userID, connectorID string, updater func(u UserIdentity) (UserIdentity, error)) error
+	UpdateAuthSession(ctx context.Context, id string, updater func(s AuthSession) (AuthSession, error)) error
+	UpdateConnector(ctx context.Context, id string, updater func(c Connector) (Connector, error)) error
+	UpdateDeviceToken(ctx context.Context, deviceCode string, updater func(t DeviceToken) (DeviceToken, error)) error
 
 	// GarbageCollect deletes all expired AuthCodes,
 	// AuthRequests, DeviceRequests, and DeviceTokens.
-	GarbageCollect(now time.Time) (GCResult, error)
+	GarbageCollect(ctx context.Context, now time.Time) (GCResult, error)
 }
 
 // Client represents an OAuth2 client.
@@ -149,14 +162,28 @@ type Storage interface {
 //   - Public clients: https://developers.google.com/api-client-library/python/auth/installed-app
 type Client struct {
 	// Client ID and secret used to identify the client.
-	ID        string `json:"id" yaml:"id"`
-	IDEnv     string `json:"idEnv" yaml:"idEnv"`
-	Secret    string `json:"secret" yaml:"secret"`
-	SecretEnv string `json:"secretEnv" yaml:"secretEnv"`
+	ID        string `json:"id"`
+	IDEnv     string `json:"idEnv"`
+	Secret    string `json:"secret"`
+	SecretEnv string `json:"secretEnv"`
 
 	// A registered set of redirect URIs. When redirecting from dex to the client, the URI
 	// requested to redirect to MUST match one of these values, unless the client is "public".
-	RedirectURIs []string `json:"redirectURIs" yaml:"redirectURIs"`
+	RedirectURIs []string `json:"redirectURIs"`
+
+	// PostLogoutRedirectURIs is a registered set of URIs that the client can redirect to
+	// after logout. Per OIDC RP-Initiated Logout Section 2, the post_logout_redirect_uri
+	// parameter MUST match one of these values.
+	PostLogoutRedirectURIs []string `json:"postLogoutRedirectURIs"`
+
+	// BackchannelLogoutURI is where dex POSTs a logout token when the user's session
+	// ends, per OIDC Back-Channel Logout 1.0. Empty means the client does not
+	// participate: it simply will not be told, and its own session outlives dex's.
+	BackchannelLogoutURI string `json:"backchannelLogoutURI"`
+
+	// RefreshTokenLifetime says whether this client's refresh tokens outlive the
+	// session that issued them. See the constants below; empty means Standalone.
+	RefreshTokenLifetime string `json:"refreshTokenLifetime"`
 
 	// IDTokenExpiry overrides the global expiration length for id tokens. Note that this can only
 	// be less than the global setting. This lets us keep the public key rotation up-to-date for
@@ -170,14 +197,74 @@ type Client struct {
 	// this client's ID will appear as the ID Token's audience.
 	//
 	// Clients inherently trust themselves.
-	TrustedPeers []string `json:"trustedPeers" yaml:"trustedPeers"`
+	TrustedPeers []string `json:"trustedPeers"`
 
 	// Public clients must use either use a redirectURL 127.0.0.1:X or "urn:ietf:wg:oauth:2.0:oob"
-	Public bool `json:"public" yaml:"public"`
+	Public bool `json:"public"`
 
 	// Name and LogoURL used when displaying this client to the end user.
-	Name    string `json:"name" yaml:"name"`
-	LogoURL string `json:"logoURL" yaml:"logoURL"`
+	Name    string `json:"name"`
+	LogoURL string `json:"logoURL"`
+
+	// AllowedConnectors is a list of connector IDs that the client is allowed to use for authentication.
+	// If empty, all connectors are allowed.
+	AllowedConnectors []string `json:"allowedConnectors"`
+
+	// MFAChain is an ordered list of MFA authenticator IDs that a user must complete
+	// during login. Empty means no MFA required.
+	MFAChain []string `json:"mfaChain"`
+
+	// SSOSharedWith defines which other clients can reuse this client's authentication session.
+	// When a user is authenticated for this client, clients listed here can skip authentication.
+	// Special value "*" means share with all clients (Keycloak-like realm-wide SSO).
+	// nil means use ssoSharedWithDefault from sessions config.
+	// Empty slice [] means explicitly share with no one.
+	SSOSharedWith []string `json:"ssoSharedWith" yaml:"ssoSharedWith"`
+
+	// ClientCredentialsClaims holds identity claims used when issuing tokens via the
+	// client_credentials grant. Kept separate from core Client fields to avoid mixing
+	// application identity (ID, secret, redirect URIs) with user-like identity attributes.
+	ClientCredentialsClaims *ClientCredentialsClaims `json:"clientCredentialsClaims,omitempty"`
+}
+
+// Refresh token lifetimes, the values Client.RefreshTokenLifetime accepts.
+const (
+	// RefreshTokenLifetimeStandalone, the default, lets a refresh token live out its
+	// configured expiry whatever happens to the session that issued it. This is what
+	// keeps a kubectl credential working after the user signs out of a web app.
+	RefreshTokenLifetimeStandalone = "standalone"
+
+	// RefreshTokenLifetimeSession ends the token with that session: redeeming it then
+	// fails and deletes it. For clients that are a browser session and nothing else,
+	// such as an authenticating proxy, where a token outliving the session is a way
+	// back in after logout. Dex requires offline_access for every refresh token, so
+	// nothing in the request tells the two apart — the client has to say so.
+	RefreshTokenLifetimeSession = "session"
+)
+
+// ValidateRefreshTokenLifetime rejects unknown values, so that a typo fails at
+// configuration time instead of silently leaving the tokens standalone.
+func ValidateRefreshTokenLifetime(lifetime string) error {
+	switch lifetime {
+	case "", RefreshTokenLifetimeStandalone, RefreshTokenLifetimeSession:
+		return nil
+	default:
+		return fmt.Errorf("invalid refresh token lifetime %q: want %q or %q",
+			lifetime, RefreshTokenLifetimeStandalone, RefreshTokenLifetimeSession)
+	}
+}
+
+// RefreshBoundToSession reports whether this client's refresh tokens end with the
+// browser session that issued them.
+func (c Client) RefreshBoundToSession() bool {
+	return c.RefreshTokenLifetime == RefreshTokenLifetimeSession
+}
+
+// ClientCredentialsClaims contains claims that are included in tokens issued via
+// the client_credentials grant. This is scoped to client_credentials to keep the
+// Client struct focused on application-level concerns.
+type ClientCredentialsClaims struct {
+	Groups []string `json:"groups,omitempty"`
 }
 
 // Claims represents the ID Token claims supported by the server.
@@ -219,6 +306,20 @@ type AuthRequest struct {
 	// attempts.
 	ForceApprovalPrompt bool
 
+	// OIDC prompt parameter. Controls authentication and consent UI behavior.
+	// Values: "none", "login", "consent", "select_account".
+	Prompt string
+
+	// MaxAge is the OIDC max_age parameter — maximum allowable elapsed time
+	// in seconds since the user last actively authenticated.
+	// -1 means not specified.
+	MaxAge int
+
+	// AuthTime is when the user last actively authenticated (entered credentials).
+	// Set during finalizeLogin (= now) or trySessionLogin (= UserIdentity.LastLogin).
+	// Used in ID token as "auth_time" claim.
+	AuthTime time.Time
+
 	Expiry time.Time
 
 	// Has the user proved their identity through a backing identity provider?
@@ -240,6 +341,13 @@ type AuthRequest struct {
 
 	// HMACKey is used when generating an AuthRequest-specific HMAC
 	HMACKey []byte
+
+	// MFAValidated is set to true if the user has completed multi-factor authentication.
+	MFAValidated bool
+
+	// WebAuthnSessionData stores temporary WebAuthn ceremony data (challenge, etc.)
+	// between Begin and Finish calls. JSON-encoded webauthn.SessionData.
+	WebAuthnSessionData []byte
 }
 
 // AuthCode represents a code which can be exchanged for an OAuth2 token response.
@@ -275,6 +383,15 @@ type AuthCode struct {
 	Claims        Claims
 
 	Expiry time.Time
+
+	// SessionID is the browser session this code was issued from, carried into the
+	// tokens as their "sid" claim. Empty when sessions are off, or when the flow
+	// had no browser session behind it.
+	SessionID string
+
+	// AuthTime is when the user last actively authenticated.
+	// Carried over from AuthRequest to include in ID tokens.
+	AuthTime time.Time
 
 	// PKCE CodeChallenge and CodeChallengeMethod
 	PKCE PKCE
@@ -321,6 +438,120 @@ type RefreshTokenRef struct {
 
 	CreatedAt time.Time
 	LastUsed  time.Time
+
+	// SessionID is the browser session this token was issued under, empty for
+	// tokens from flows that never touched a browser. It records origin, not
+	// lifetime: the token outlives the session, but a token that was never part of
+	// one must not start claiming a session on refresh.
+	SessionID string
+}
+
+// MFASecret stores the enrollment state and secret for an MFA authenticator.
+// Note: Secret is stored without encryption. Encrypting secrets at rest is the
+// responsibility of the storage backend (e.g., encrypted etcd, disk encryption).
+type MFASecret struct {
+	AuthenticatorID string    `json:"authenticatorID"`
+	Type            string    `json:"type"`
+	Secret          string    `json:"secret"`
+	Confirmed       bool      `json:"confirmed"`
+	CreatedAt       time.Time `json:"createdAt"`
+
+	// LastUsedCounter is the TOTP time-step counter of the most recently accepted
+	// code. Codes whose counter is <= this value are rejected to make each code
+	// single-use (replay protection). Zero means no code has been accepted yet.
+	LastUsedCounter int64 `json:"lastUsedCounter,omitempty"`
+}
+
+// WebAuthnCredential stores a registered WebAuthn credential for a user.
+type WebAuthnCredential struct {
+	CredentialID    []byte    `json:"credentialID"`
+	PublicKey       []byte    `json:"publicKey"`
+	AttestationType string    `json:"attestationType"`
+	AAGUID          []byte    `json:"aaguid"`
+	SignCount       uint32    `json:"signCount"`
+	CloneWarning    bool      `json:"cloneWarning"`
+	Transport       []string  `json:"transport"`
+	BackupEligible  bool      `json:"backupEligible"`
+	BackupState     bool      `json:"backupState"`
+	DisplayName     string    `json:"displayName"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
+// UserIdentity represents persistent per-user identity data.
+type UserIdentity struct {
+	UserID              string
+	ConnectorID         string
+	Claims              Claims
+	Consents            map[string][]string             // clientID -> approved scopes
+	MFASecrets          map[string]*MFASecret           // authenticatorID -> secret
+	WebAuthnCredentials map[string][]WebAuthnCredential // authenticatorID -> credentials
+	CreatedAt           time.Time
+	LastLogin           time.Time
+	BlockedUntil        time.Time
+}
+
+// ClientAuthState represents authentication state for a specific client within an auth session.
+type ClientAuthState struct {
+	AuthenticatedAt   time.Time
+	LastActivity      time.Time
+	LastTokenIssuedAt time.Time
+
+	// ViaSSO is true when this state was derived from another client's session
+	// via ssoSharedWith rather than a direct authentication. SSO-derived states
+	// are not eligible as SSO sources themselves, which keeps sharing
+	// unidirectional and prevents transitive A->B->C chains.
+	ViaSSO bool
+}
+
+// LogoutState holds RP parameters saved in the auth session during logout.
+// These are written before the upstream logout redirect and read back in the callback.
+type LogoutState struct {
+	PostLogoutRedirectURI string
+	State                 string // RP's opaque state parameter
+	ClientID              string
+	ConnectorID           string
+}
+
+// AuthSession is one signed-in browser: a user, the connector they authenticated
+// with, and the clients they have reached since.
+//
+// A session belongs to the browser holding its cookie and to no other. Dex does not
+// identify devices — it cannot, since a user agent string and an IP address are both
+// forgeable and both change under a user who has not moved — so the cookie is the
+// device: a browser presenting one continues that session, and a browser without one
+// starts another. Signing in from a phone therefore leaves the laptop's session
+// alone, and signing out of the phone ends only the phone's.
+type AuthSession struct {
+	// ID identifies the session. It is random, it is what the cookie names, and it
+	// is published as the "sid" claim in tokens and logout tokens.
+	ID string
+
+	// Secret proves the bearer of the cookie is the browser this session was issued
+	// to. It is compared in constant time and never leaves dex except in that
+	// cookie — ID alone cannot be trusted, precisely because dex publishes it.
+	Secret string
+
+	UserID       string
+	ConnectorID  string
+	ClientStates map[string]*ClientAuthState // clientID -> auth state
+	CreatedAt    time.Time
+	LastActivity time.Time
+
+	// IPAddress and UserAgent are the last seen, refreshed at every authentication.
+	// A session outlives the network and the browser build it started on, so the
+	// values recorded at creation would describe a device that no longer exists.
+	IPAddress string
+	UserAgent string
+
+	// AbsoluteExpiry is CreatedAt + AbsoluteLifetime, set once at creation.
+	AbsoluteExpiry time.Time
+	// IdleExpiry is LastActivity + ValidIfNotUsedFor, updated on every activity.
+	IdleExpiry time.Time
+
+	// LogoutState is set during RP-Initiated Logout before redirecting to the
+	// upstream provider. The callback handler reads it back to complete the flow.
+	// Nil when no logout is in progress.
+	LogoutState *LogoutState
 }
 
 // OfflineSessions objects are sessions pertaining to users with refresh tokens.
@@ -359,8 +590,22 @@ type Password struct {
 	// Optional username to display. NOT used during login.
 	Username string `json:"username"`
 
+	// Optional full name for OIDC "name" claim.
+	// Defaults to Username when empty.
+	Name string `json:"name"`
+
+	// Optional preferred username for OIDC "preferred_username" claim.
+	PreferredUsername string `json:"preferredUsername"`
+
+	// Optional value for OIDC "email_verified" claim.
+	// Defaults to true for backwards compatibility when nil.
+	EmailVerified *bool `json:"emailVerified,omitempty"`
+
 	// Randomly generated user ID. This is NOT the primary ID of the Password object.
 	UserID string `json:"userID"`
+
+	// Groups assigned to the user
+	Groups []string `json:"groups"`
 }
 
 // Connector is an object that contains the metadata about connectors used to login to Dex.
@@ -381,6 +626,10 @@ type Connector struct {
 	// However, fixing this requires migrating Kubernetes objects for all previously created connectors,
 	// or making Dex reading both tags and act accordingly.
 	Config []byte `json:"email"`
+
+	// GrantTypes is a list of grant types that this connector is allowed to be used with.
+	// If empty, all grant types are allowed.
+	GrantTypes []string `json:"grantTypes,omitempty"`
 }
 
 // VerificationKey is a rotated signing key which can still be used to verify

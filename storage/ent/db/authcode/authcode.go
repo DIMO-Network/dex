@@ -41,6 +41,10 @@ const (
 	FieldCodeChallenge = "code_challenge"
 	// FieldCodeChallengeMethod holds the string denoting the code_challenge_method field in the database.
 	FieldCodeChallengeMethod = "code_challenge_method"
+	// FieldAuthTime holds the string denoting the auth_time field in the database.
+	FieldAuthTime = "auth_time"
+	// FieldSessionID holds the string denoting the session_id field in the database.
+	FieldSessionID = "session_id"
 	// Table holds the table name of the authcode in the database.
 	Table = "auth_codes"
 )
@@ -63,6 +67,8 @@ var Columns = []string{
 	FieldExpiry,
 	FieldCodeChallenge,
 	FieldCodeChallengeMethod,
+	FieldAuthTime,
+	FieldSessionID,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -96,6 +102,8 @@ var (
 	DefaultCodeChallenge string
 	// DefaultCodeChallengeMethod holds the default value on creation for the "code_challenge_method" field.
 	DefaultCodeChallengeMethod string
+	// DefaultSessionID holds the default value on creation for the "session_id" field.
+	DefaultSessionID string
 	// IDValidator is a validator for the "id" field. It is called by the builders before save.
 	IDValidator func(string) error
 )
@@ -166,4 +174,14 @@ func ByCodeChallenge(opts ...sql.OrderTermOption) OrderOption {
 // ByCodeChallengeMethod orders the results by the code_challenge_method field.
 func ByCodeChallengeMethod(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCodeChallengeMethod, opts...).ToFunc()
+}
+
+// ByAuthTime orders the results by the auth_time field.
+func ByAuthTime(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAuthTime, opts...).ToFunc()
+}
+
+// BySessionID orders the results by the session_id field.
+func BySessionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSessionID, opts...).ToFunc()
 }

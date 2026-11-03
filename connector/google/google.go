@@ -8,12 +8,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
 	"cloud.google.com/go/compute/metadata"
 	"github.com/coreos/go-oidc/v3/oidc"
-	"golang.org/x/exp/slices"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	admin "google.golang.org/api/admin/directory/v1"
@@ -168,9 +168,9 @@ func (c *googleConnector) Close() error {
 	return nil
 }
 
-func (c *googleConnector) LoginURL(s connector.Scopes, callbackURL, state string) (string, error) {
+func (c *googleConnector) LoginURL(s connector.Scopes, callbackURL, state string) (string, []byte, error) {
 	if c.redirectURI != callbackURL {
-		return "", fmt.Errorf("expected callback URL %q did not match the URL in the config %q", callbackURL, c.redirectURI)
+		return "", nil, fmt.Errorf("expected callback URL %q did not match the URL in the config %q", callbackURL, c.redirectURI)
 	}
 
 	var opts []oauth2.AuthCodeOption
@@ -186,7 +186,7 @@ func (c *googleConnector) LoginURL(s connector.Scopes, callbackURL, state string
 		opts = append(opts, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", c.promptType))
 	}
 
-	return c.oauth2Config.AuthCodeURL(state, opts...), nil
+	return c.oauth2Config.AuthCodeURL(state, opts...), nil, nil
 }
 
 type oauth2Error struct {
@@ -201,7 +201,7 @@ func (e *oauth2Error) Error() string {
 	return e.error + ": " + e.errorDescription
 }
 
-func (c *googleConnector) HandleCallback(s connector.Scopes, r *http.Request) (identity connector.Identity, err error) {
+func (c *googleConnector) HandleCallback(s connector.Scopes, connData []byte, r *http.Request) (identity connector.Identity, err error) {
 	q := r.URL.Query()
 	if errType := q.Get("error"); errType != "" {
 		return identity, &oauth2Error{errType, q.Get("error_description")}
@@ -245,6 +245,15 @@ func (c *googleConnector) createIdentity(ctx context.Context, identity connector
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		return identity, fmt.Errorf("oidc: failed to decode claims: %v", err)
+	}
+
+	// Google sometimes do not return username and other claims. It is correct, according to OIDC spec.
+	// One option to solve this is to call the user endpoint, but Google throttles it more aggressive than
+	// the token endpoint. For concurrent refreshes it is an unwanted behavior.
+	// As a tradeoff, dex preserves previous username and preferred username if absent in the ide token
+	// as a way to keep the claims and do not call the userinfo endpoint.
+	if claims.Username == "" {
+		claims.Username = identity.Username
 	}
 
 	if len(c.hostedDomains) > 0 {

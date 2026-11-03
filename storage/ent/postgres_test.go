@@ -1,7 +1,6 @@
 package ent
 
 import (
-	"io"
 	"log/slog"
 	"os"
 	"strconv"
@@ -36,8 +35,8 @@ func postgresTestConfig(host string, port uint64) *Postgres {
 	}
 }
 
-func newPostgresStorage(host string, port uint64) storage.Storage {
-	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+func newPostgresStorage(t *testing.T, host string, port uint64) storage.Storage {
+	logger := slog.New(slog.NewTextHandler(t.Output(), &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	cfg := postgresTestConfig(host, port)
 	s, err := cfg.Open(logger)
@@ -61,11 +60,16 @@ func TestPostgres(t *testing.T) {
 		require.NoError(t, err, "invalid postgres port %q: %s", rawPort, err)
 	}
 
-	newStorage := func() storage.Storage {
-		return newPostgresStorage(host, port)
+	newStorage := func(t *testing.T) storage.Storage {
+		return newPostgresStorage(t, host, port)
 	}
 	conformance.RunTests(t, newStorage)
 	conformance.RunTransactionTests(t, newStorage)
+
+	// TODO(nabokihms): ent Postgres uses SERIALIZABLE transaction isolation for UpdateRefreshToken,
+	// but does not retry on serialization failures (pq: could not serialize access due to
+	// concurrent update, SQLSTATE 40001). Under high contention most updates fail immediately.
+	// conformance.RunConcurrencyTests(t, newStorage)
 }
 
 func TestPostgresDSN(t *testing.T) {

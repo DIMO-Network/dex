@@ -1,5 +1,4 @@
 export PATH := $(abspath bin/protoc/bin/):$(abspath bin/):${PATH}
-export SHELL := env PATH=$(PATH) /bin/sh
 
 OS = $(shell uname | tr A-Z a-z)
 
@@ -18,12 +17,12 @@ export GOBIN=$(PWD)/bin
 LD_FLAGS="-w -X main.version=$(VERSION)"
 
 # Dependency versions
-GOLANGCI_VERSION   = 1.63.4
-GOTESTSUM_VERSION ?= 1.10.1
+GOLANGCI_VERSION   = 2.15.0
+GOTESTSUM_VERSION ?= 1.13.0
 
-PROTOC_VERSION             = 24.4
-PROTOC_GEN_GO_VERSION      = 1.32.0
-PROTOC_GEN_GO_GRPC_VERSION = 1.3.0
+PROTOC_VERSION             = 29.3
+PROTOC_GEN_GO_VERSION      = 1.36.5
+PROTOC_GEN_GO_GRPC_VERSION = 1.5.1
 
 KIND_VERSION    = 0.22.0
 KIND_NODE_IMAGE = "kindest/node:v1.25.3@sha256:cd248d1438192f7814fbca8fede13cfe5b9918746dfa12583976158a834fd5c5"
@@ -124,16 +123,32 @@ verify-go-mod: go-mod-tidy ## Check that go.mod and go.sum formatted according t
 
 deps: bin/gotestsum bin/golangci-lint bin/protoc bin/protoc-gen-go bin/protoc-gen-go-grpc bin/kind ## Install dev dependencies.
 
-.PHONY: test testrace testall
-test: ## Test go code.
-	@go test -v ./...
+# Detect if we're running in GitHub Actions
+ifdef GITHUB_ACTIONS
+GOTESTSUM_FORMAT = github-actions
+else
+GOTESTSUM_FORMAT = testname
+GOTESTSUM_FORMAT_ICONS = hivis
+endif
 
-testrace: ## Test go code and check for possible race conditions.
-	@go test -v --race ./...
+.PHONY: test testrace testall
+test: bin/gotestsum ## Test go code.
+ifdef GOTESTSUM_FORMAT_ICONS
+	@gotestsum --format $(GOTESTSUM_FORMAT) --format-icons $(GOTESTSUM_FORMAT_ICONS) -- -v ./...
+else
+	@gotestsum --format $(GOTESTSUM_FORMAT) -- -v ./...
+endif
+
+testrace: bin/gotestsum ## Test go code and check for possible race conditions.
+ifdef GOTESTSUM_FORMAT_ICONS
+	@gotestsum --format $(GOTESTSUM_FORMAT) --format-icons $(GOTESTSUM_FORMAT_ICONS) -- -v --race ./...
+else
+	@gotestsum --format $(GOTESTSUM_FORMAT) -- -v --race ./...
+endif
 
 testall: testrace ## Run all tests for go code.
 
-.PHONY: lint lint-fix
+.PHONY: lint
 lint: ## Run linter.
 	@golangci-lint version
 	@golangci-lint run
@@ -141,7 +156,7 @@ lint: ## Run linter.
 .PHONY: fix
 fix: ## Fix lint violations.
 	@golangci-lint version
-	@golangci-lint run --fix
+	@golangci-lint fmt
 
 docker-compose.override.yaml:
 	cp docker-compose.override.yaml.dist docker-compose.override.yaml
@@ -169,7 +184,7 @@ kind-down: ## Delete the kind cluster.
 
 bin/golangci-lint:
 	@mkdir -p bin
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | BINARY=golangci-lint bash -s -- v${GOLANGCI_VERSION}
+	curl -sSfL https://golangci-lint.run/install.sh | sh -s v${GOLANGCI_VERSION}
 
 bin/gotestsum:
 	@mkdir -p bin

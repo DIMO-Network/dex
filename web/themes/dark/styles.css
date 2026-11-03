@@ -66,12 +66,105 @@
     color: #ffffff;
 }
 
-.dex-btn-icon {
-    margin-right: 10px;
+/* Provider icons sit directly on the button, without main.css's coloured tile. */
+.theme-btn-provider .dex-btn-icon {
+    background-color: transparent;
+    background-size: 24px;
+    margin: 0 10px 0 0;
+}
+
+.theme-btn-provider .dex-btn-icon--web3 {
+    background-size: contain;
 }
 
 .theme-form-row {
     display: flex;
     justify-content: center;
     margin: 5px 0;
+}
+
+/* The rules below are upstream's dark theme, kept for the pages DIMO doesn't
+ * restyle: password, approval, device, home, logout and MFA. */
+.theme-btn--primary {
+  background-color: #3d3f47;
+  border: none;
+  color: #e8eaed;
+  min-width: 200px;
+  padding: 8px 16px;
+}
+
+.theme-btn--primary:hover {
+  background-color: #4a4c55;
+  color: #fff;
+}
+
+.theme-btn--success {
+  background-color: #2d7d9a;
+  color: #e8eaed;
+  width: 260px;
+}
+
+.theme-btn--success:hover {
+  background-color: #358fae;
+}
+
+.theme-form-input {
+  background-color: #131519;
+  border: 1px solid #33363e;
+  border-radius: 8px;
+  color: #b8bcc4;
+  display: block;
+  font-size: 14px;
+  height: 40px;
+  line-height: 1.5;
+  margin: auto;
+  padding: 8px 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 260px;
+}
+
+.theme-form-input:focus,
+.theme-form-input:active {
+  border-color: #5a9bb5;
+  box-shadow: 0 0 0 3px rgba(90, 155, 181, 0.15);
+  color: #dcdfe5;
+  outline: none;
+}
+
+.theme-form-label {
+  color: #b8bcc4;
+  font-size: 14px;
+  font-weight: 500;
+  margin: 4px auto;
+  position: relative;
+  text-align: left;
+  width: 260px;
+}
+
+.theme-link-back {
+  margin-top: 8px;
+}
+
+.theme-remember-me {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    width: 260px;
+    margin: 4px auto;
+}
+
+.dex-container {
+  color: #b8bcc4;
+}
+
+/* Palette the shared stylesheet reads for the home page. Without these the
+ * page would fall back to the light values and render dark text on the dark
+ * panel. */
+.theme-body {
+  --dex-fg: #dcdfe5;
+  --dex-fg-muted: #8b909b;
+  --dex-border: #2a2d35;
+  --dex-accent: #5a9bb5;
 }

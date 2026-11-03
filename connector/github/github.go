@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/github"
@@ -28,6 +30,8 @@ const (
 	// GitHub requires this scope to access '/user/teams' and '/orgs' API endpoints
 	// which are used when a client includes the 'groups' scope.
 	scopeOrgs = "read:org"
+	// githubAPIVersion pins the GitHub REST API version used in requests.
+	githubAPIVersion = "2022-11-28"
 )
 
 // Pagination URL patterns
@@ -127,8 +131,11 @@ func (c *Config) Open(id string, logger *slog.Logger) (connector.Connector, erro
 }
 
 type connectorData struct {
-	// GitHub's OAuth2 tokens never expire. We don't need a refresh token.
-	AccessToken string `json:"accessToken"`
+	// GitHub OAuth Apps return long-lived access tokens. GitHub Apps can return
+	// expiring user access tokens with refresh tokens.
+	AccessToken  string    `json:"accessToken"`
+	RefreshToken string    `json:"refreshToken,omitempty"`
+	Expiry       time.Time `json:"expiry,omitempty"`
 }
 
 var (
@@ -194,12 +201,12 @@ func (c *githubConnector) oauth2Config(scopes connector.Scopes) *oauth2.Config {
 	}
 }
 
-func (c *githubConnector) LoginURL(scopes connector.Scopes, callbackURL, state string) (string, error) {
+func (c *githubConnector) LoginURL(scopes connector.Scopes, callbackURL, state string) (string, []byte, error) {
 	if c.redirectURI != callbackURL {
-		return "", fmt.Errorf("expected callback URL %q did not match the URL in the config %q", callbackURL, c.redirectURI)
+		return "", nil, fmt.Errorf("expected callback URL %q did not match the URL in the config %q", callbackURL, c.redirectURI)
 	}
 
-	return c.oauth2Config(scopes).AuthCodeURL(state), nil
+	return c.oauth2Config(scopes).AuthCodeURL(state), nil, nil
 }
 
 type oauth2Error struct {
@@ -214,7 +221,7 @@ func (e *oauth2Error) Error() string {
 	return e.error + ": " + e.errorDescription
 }
 
-func (c *githubConnector) HandleCallback(s connector.Scopes, r *http.Request) (identity connector.Identity, err error) {
+func (c *githubConnector) HandleCallback(s connector.Scopes, connData []byte, r *http.Request) (identity connector.Identity, err error) {
 	q := r.URL.Query()
 	if errType := q.Get("error"); errType != "" {
 		return identity, &oauth2Error{errType, q.Get("error_description")}
@@ -266,7 +273,14 @@ func (c *githubConnector) HandleCallback(s connector.Scopes, r *http.Request) (i
 	}
 
 	if s.OfflineAccess {
-		data := connectorData{AccessToken: token.AccessToken}
+		data := connectorData{
+			AccessToken:  token.AccessToken,
+			RefreshToken: token.RefreshToken,
+			Expiry:       token.Expiry,
+		}
+		if token.RefreshToken != "" && c.logger != nil {
+			c.logger.DebugContext(ctx, "github: received upstream refresh token", "access_token_expiry", token.Expiry)
+		}
 		connData, err := json.Marshal(data)
 		if err != nil {
 			return identity, fmt.Errorf("marshal connector data: %v", err)
@@ -275,6 +289,34 @@ func (c *githubConnector) HandleCallback(s connector.Scopes, r *http.Request) (i
 	}
 
 	return identity, nil
+}
+
+// Refreshing tokens
+// https://github.com/golang/oauth2/issues/84#issuecomment-332860871
+type tokenNotifyFunc func(*oauth2.Token) error
+
+// notifyRefreshTokenSource is essentially `oauth2.ReuseTokenSource` with `TokenNotifyFunc` added.
+type notifyRefreshTokenSource struct {
+	new oauth2.TokenSource
+	mu  sync.Mutex // guards t
+	t   *oauth2.Token
+	f   tokenNotifyFunc // called when token refreshed so new refresh token can be persisted
+}
+
+// Token returns the current token if it's still valid, else will
+// refresh the current token and return the new one.
+func (s *notifyRefreshTokenSource) Token() (*oauth2.Token, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.t.Valid() {
+		return s.t, nil
+	}
+	t, err := s.new.Token()
+	if err != nil {
+		return nil, err
+	}
+	s.t = t
+	return t, s.f(t)
 }
 
 func (c *githubConnector) Refresh(ctx context.Context, s connector.Scopes, identity connector.Identity) (connector.Identity, error) {
@@ -287,7 +329,52 @@ func (c *githubConnector) Refresh(ctx context.Context, s connector.Scopes, ident
 		return identity, fmt.Errorf("github: unmarshal access token: %v", err)
 	}
 
-	client := c.oauth2Config(s).Client(ctx, &oauth2.Token{AccessToken: data.AccessToken})
+	if data.AccessToken == "" && data.RefreshToken == "" {
+		return identity, errors.New("no upstream access token found")
+	}
+
+	oauth2Config := c.oauth2Config(s)
+	if c.httpClient != nil {
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, c.httpClient)
+	}
+
+	tok := &oauth2.Token{
+		AccessToken:  data.AccessToken,
+		RefreshToken: data.RefreshToken,
+		Expiry:       data.Expiry,
+	}
+	oldRefreshToken := data.RefreshToken
+	if oldRefreshToken != "" && c.logger != nil {
+		c.logger.DebugContext(ctx, "github: upstream refresh token available",
+			"will_refresh_access_token", !tok.Valid(),
+			"access_token_expiry", data.Expiry,
+		)
+	}
+
+	client := oauth2.NewClient(ctx, &notifyRefreshTokenSource{
+		new: oauth2Config.TokenSource(ctx, tok),
+		t:   tok,
+		f: func(tok *oauth2.Token) error {
+			if c.logger != nil {
+				c.logger.DebugContext(ctx, "github: refreshed upstream access token with refresh token",
+					"access_token_expiry", tok.Expiry,
+					"refresh_token_rotated", oldRefreshToken != "" && tok.RefreshToken != "" && tok.RefreshToken != oldRefreshToken,
+				)
+			}
+
+			data := connectorData{
+				AccessToken:  tok.AccessToken,
+				RefreshToken: tok.RefreshToken,
+				Expiry:       tok.Expiry,
+			}
+			connData, err := json.Marshal(data)
+			if err != nil {
+				return fmt.Errorf("github: marshal connector data: %v", err)
+			}
+			identity.ConnectorData = connData
+			return nil
+		},
+	})
 	user, err := c.user(ctx, client)
 	if err != nil {
 		return identity, fmt.Errorf("github: get user: %v", err)
@@ -462,6 +549,7 @@ func get(ctx context.Context, client *http.Client, apiURL string, v interface{})
 		return "", fmt.Errorf("github: new req: %v", err)
 	}
 	req = req.WithContext(ctx)
+	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("github: get URL %v", err)
@@ -659,6 +747,7 @@ func (c *githubConnector) userInOrg(ctx context.Context, client *http.Client, us
 		return false, fmt.Errorf("github: new req: %v", err)
 	}
 	req = req.WithContext(ctx)
+	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, fmt.Errorf("github: get teams: %v", err)

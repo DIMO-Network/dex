@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -14,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -35,7 +38,15 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"github.com/dexidp/dex/api/v2"
+	"github.com/dexidp/dex/pkg/featureflags"
 	"github.com/dexidp/dex/server"
+	"github.com/dexidp/dex/server/apiserver"
+	"github.com/dexidp/dex/server/authflow"
+	"github.com/dexidp/dex/server/connectors"
+	"github.com/dexidp/dex/server/mfa"
+	"github.com/dexidp/dex/server/session"
+	"github.com/dexidp/dex/server/signer"
+	"github.com/dexidp/dex/server/tokens"
 	"github.com/dexidp/dex/storage"
 )
 
@@ -95,13 +106,19 @@ func runServe(options serveOptions) error {
 	}
 
 	var c Config
-	if err := yaml.Unmarshal(configData, &c); err != nil {
+
+	jsonConfigData, err := yaml.YAMLToJSON(configData)
+	if err != nil {
 		return fmt.Errorf("error parse config file %s: %v", configFile, err)
+	}
+
+	if err := configUnmarshaller(jsonConfigData, &c); err != nil {
+		return fmt.Errorf("error unmarshalling config file %s: %v", configFile, err)
 	}
 
 	applyConfigOverrides(options, &c)
 
-	logger, err := newLogger(c.Logger.Level, c.Logger.Format)
+	logger, err := newLogger(c.Logger.Level, c.Logger.Format, c.Logger.ExcludeFields)
 	if err != nil {
 		return fmt.Errorf("invalid config: %v", err)
 	}
@@ -227,10 +244,8 @@ func runServe(options serveOptions) error {
 				}
 				c.StaticClients[i].Secret = os.Getenv(client.SecretEnv)
 			}
-			if client.IDTokenExpiry != "" {
-				if _, err := time.ParseDuration(client.IDTokenExpiry); err != nil {
-					return fmt.Errorf("invalid config: IDTokenExpiry field must be a valid duration for client %q", client.ID)
-				}
+			if err := validateIDTokenExpiry(client); err != nil {
+				return err
 			}
 			logger.Info("config static client", "client_name", client.Name)
 		}
@@ -252,6 +267,11 @@ func runServe(options serveOptions) error {
 		if c.Config == nil {
 			return fmt.Errorf("invalid config: no config field for connector %q", c.ID)
 		}
+		for _, gt := range c.GrantTypes {
+			if !connectors.ConnectorGrantTypes[gt] {
+				return fmt.Errorf("invalid config: unknown grant type %q for connector %q", gt, c.ID)
+			}
+		}
 		logger.Info("config connector", "connector_id", c.ID)
 
 		// convert to a storage connector object
@@ -264,9 +284,9 @@ func runServe(options serveOptions) error {
 
 	if c.EnablePasswordDB {
 		storageConnectors = append(storageConnectors, storage.Connector{
-			ID:   server.LocalConnector,
+			ID:   connectors.LocalConnector,
 			Name: "Email",
-			Type: server.LocalConnector,
+			Type: connectors.LocalConnector,
 		})
 		logger.Info("config connector: local passwords enabled")
 	}
@@ -285,11 +305,73 @@ func runServe(options serveOptions) error {
 	if len(c.Web.AllowedOrigins) > 0 {
 		logger.Info("config allowed origins", "origins", c.Web.AllowedOrigins)
 	}
+	if featureflags.ContinueOnConnectorFailure.Enabled() {
+		logger.Info("continue on connector failure feature flag enabled")
+	}
 
 	// explicitly convert to UTC.
 	now := func() time.Time { return time.Now().UTC() }
 
 	healthChecker := gosundheit.New()
+
+	// Parse expiry durations
+	idTokensValidFor := 24 * time.Hour // default
+	if c.Expiry.IDTokens != "" {
+		var err error
+		idTokensValidFor, err = time.ParseDuration(c.Expiry.IDTokens)
+		if err != nil {
+			return fmt.Errorf("invalid config value %q for id token expiry: %v", c.Expiry.IDTokens, err)
+		}
+		logger.Info("config id tokens", "valid_for", idTokensValidFor)
+	}
+
+	// Create signer
+	var signerInstance signer.Signer
+	switch c.Signer.Type {
+	case "vault":
+		vaultConfig, ok := c.Signer.Config.(*signer.VaultConfig)
+		if !ok {
+			return fmt.Errorf("invalid vault signer config")
+		}
+		signerInstance, err = vaultConfig.Open(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to open vault signer: %v", err)
+		}
+		logger.Info("signer configured", "type", "vault")
+	case "local":
+		localConfig, ok := c.Signer.Config.(*signer.LocalConfig)
+		if !ok {
+			return fmt.Errorf("invalid local signer config")
+		}
+		if localConfig.KeysRotationPeriod == "" {
+			return fmt.Errorf("failed to open local signer: signer.config.keysRotationPeriod must be specified")
+		}
+		if c.Expiry.SigningKeys != "" {
+			logger.Warn("both expiry.signingKeys and signer.config.keysRotationPeriod specified, using signer.config.keysRotationPeriod")
+		}
+		signerInstance, err = localConfig.Open(context.Background(), s, idTokensValidFor, now, logger)
+		if err != nil {
+			return fmt.Errorf("failed to open local signer: %v", err)
+		}
+		logger.Info("signer configured", "type", "local", "keys_rotation_period", localConfig.KeysRotationPeriod)
+	case "": // Default to local signer
+		// Handle deprecated expiry.signingKeys configuration
+		if c.Expiry.SigningKeys != "" {
+			logger.Warn("config expiry.signingKeys will be removed in a future release",
+				"use_instead", "signer.config.keysRotationPeriod",
+				"current_value", c.Expiry.SigningKeys, "deprecated", true)
+		} else {
+			c.Expiry.SigningKeys = "6h"
+		}
+		localConfig := signer.LocalConfig{KeysRotationPeriod: c.Expiry.SigningKeys}
+		signerInstance, err = localConfig.Open(context.Background(), s, idTokensValidFor, now, logger)
+		if err != nil {
+			return fmt.Errorf("failed to open local signer: %v", err)
+		}
+		logger.Info("signer configured", "type", "local", "keys_rotation_period", localConfig.KeysRotationPeriod)
+	default:
+		return fmt.Errorf("unknown signer type %q", c.Signer.Type)
+	}
 
 	serverConfig := server.Config{
 		AllowedGrantTypes:      c.OAuth2.GrantTypes,
@@ -297,33 +379,27 @@ func runServe(options serveOptions) error {
 		SkipApprovalScreen:     c.OAuth2.SkipApprovalScreen,
 		AlwaysShowLoginScreen:  c.OAuth2.AlwaysShowLoginScreen,
 		PasswordConnector:      c.OAuth2.PasswordConnector,
-		Headers:                c.Web.Headers.ToHTTPHeader(),
-		AllowedOrigins:         c.Web.AllowedOrigins,
-		AllowedHeaders:         c.Web.AllowedHeaders,
-		Issuer:                 c.Issuer,
-		Storage:                s,
-		Web:                    c.Frontend,
-		Logger:                 logger,
-		Now:                    now,
-		PrometheusRegistry:     prometheusRegistry,
-		HealthChecker:          healthChecker,
+		PKCE: authflow.PKCEConfig{
+			Enforce:                       c.OAuth2.PKCE.Enforce,
+			CodeChallengeMethodsSupported: c.OAuth2.PKCE.CodeChallengeMethodsSupported,
+		},
+		Headers:                    c.Web.Headers.ToHTTPHeader(),
+		AllowedOrigins:             c.Web.AllowedOrigins,
+		AllowedHeaders:             c.Web.AllowedHeaders,
+		Issuer:                     c.Issuer,
+		Storage:                    s,
+		Web:                        c.Frontend,
+		Logger:                     logger,
+		Now:                        now,
+		PrometheusRegistry:         prometheusRegistry,
+		HealthChecker:              healthChecker,
+		ContinueOnConnectorFailure: featureflags.ContinueOnConnectorFailure.Enabled(),
+		Signer:                     signerInstance,
+		IDTokensValidFor:           idTokensValidFor,
+		MFAProviders:               buildMFAProviders(c.MFA.Authenticators, c.Issuer, logger),
+		DefaultMFAChain:            c.MFA.DefaultMFAChain,
 	}
-	if c.Expiry.SigningKeys != "" {
-		signingKeys, err := time.ParseDuration(c.Expiry.SigningKeys)
-		if err != nil {
-			return fmt.Errorf("invalid config value %q for signing keys expiry: %v", c.Expiry.SigningKeys, err)
-		}
-		logger.Info("config signing keys", "expire_after", signingKeys)
-		serverConfig.RotateKeysAfter = signingKeys
-	}
-	if c.Expiry.IDTokens != "" {
-		idTokens, err := time.ParseDuration(c.Expiry.IDTokens)
-		if err != nil {
-			return fmt.Errorf("invalid config value %q for id token expiry: %v", c.Expiry.IDTokens, err)
-		}
-		logger.Info("config id tokens", "valid_for", idTokens)
-		serverConfig.IDTokensValidFor = idTokens
-	}
+
 	if c.Expiry.AuthRequests != "" {
 		authRequests, err := time.ParseDuration(c.Expiry.AuthRequests)
 		if err != nil {
@@ -335,12 +411,12 @@ func runServe(options serveOptions) error {
 	if c.Expiry.DeviceRequests != "" {
 		deviceRequests, err := time.ParseDuration(c.Expiry.DeviceRequests)
 		if err != nil {
-			return fmt.Errorf("invalid config value %q for device request expiry: %v", c.Expiry.AuthRequests, err)
+			return fmt.Errorf("invalid config value %q for device request expiry: %v", c.Expiry.DeviceRequests, err)
 		}
 		logger.Info("config device requests", "valid_for", deviceRequests)
 		serverConfig.DeviceRequestsValidFor = deviceRequests
 	}
-	refreshTokenPolicy, err := server.NewRefreshTokenPolicy(
+	refreshTokenPolicy, err := tokens.NewRefreshTokenPolicy(
 		logger,
 		c.Expiry.RefreshTokens.DisableRotation,
 		c.Expiry.RefreshTokens.ValidIfNotUsedFor,
@@ -353,10 +429,28 @@ func runServe(options serveOptions) error {
 
 	serverConfig.RefreshTokenPolicy = refreshTokenPolicy
 
+	if featureflags.SessionsEnabled.Enabled() {
+		sessionConfig, err := parseSessionConfig(c.Sessions)
+		if err != nil {
+			return fmt.Errorf("invalid session config: %v", err)
+		}
+		serverConfig.SessionConfig = sessionConfig
+		logger.Info("config sessions",
+			"cookie_name", sessionConfig.CookieName,
+			"absolute_lifetime", sessionConfig.AbsoluteLifetime,
+			"valid_if_not_used_for", sessionConfig.ValidIfNotUsedFor,
+		)
+	}
+
 	serverConfig.RealIPHeader = c.Web.ClientRemoteIP.Header
 	serverConfig.TrustedRealIPCIDRs, err = c.Web.ClientRemoteIP.ParseTrustedProxies()
 	if err != nil {
 		return fmt.Errorf("failed to parse client remote IP settings: %v", err)
+	}
+	if serverConfig.RealIPHeader != "" && len(serverConfig.TrustedRealIPCIDRs) == 0 {
+		logger.Warn("web.clientRemoteIP.header is set without web.clientRemoteIP.trustedProxies; "+
+			"the header is ignored because any client could spoof it",
+			"header", serverConfig.RealIPHeader)
 	}
 
 	serv, err := server.NewServer(context.Background(), serverConfig)
@@ -478,6 +572,9 @@ func runServe(options serveOptions) error {
 			CipherSuites:             allowedTLSCiphers,
 			PreferServerCipherSuites: true,
 		}
+		if err := applyWebTLSPreferences(baseTLSConfig, c.Web); err != nil {
+			return fmt.Errorf("invalid config: %v", err)
+		}
 
 		tlsConfig, err := newTLSReloader(logger, c.Web.TLSCert, c.Web.TLSKey, "", baseTLSConfig)
 		if err != nil {
@@ -507,13 +604,25 @@ func runServe(options serveOptions) error {
 	if c.GRPC.Addr != "" {
 		logger.Info("listening on", "server", "grpc", "address", c.GRPC.Addr)
 
+		if c.GRPC.TLSClientCA == "" {
+			// The gRPC API grants full administrative access (client secret reads,
+			// password/connector/identity CRUD). Its only built-in caller
+			// authentication is mutual TLS via grpc.tlsClientCA; without it, anyone
+			// who can reach the port controls the identity provider. This is a valid
+			// setup only when a trusted front-facing service authenticates callers.
+			logger.Warn("grpc: API server has no client certificate authentication (grpc.tlsClientCA is unset); "+
+				"it exposes full administrative access. Ensure the port is only reachable by an authenticated, trusted service, "+
+				"or set grpc.tlsClientCA to require mutual TLS.",
+				"tls", c.GRPC.TLSCert != "")
+		}
+
 		grpcListener, err := net.Listen("tcp", c.GRPC.Addr)
 		if err != nil {
-			return fmt.Errorf("listening (grcp) on %s: %w", c.GRPC.Addr, err)
+			return fmt.Errorf("listening (grpc) on %s: %w", c.GRPC.Addr, err)
 		}
 
 		grpcSrv := grpc.NewServer(grpcOptions...)
-		api.RegisterDexServer(grpcSrv, server.NewAPI(serverConfig, logger, version))
+		api.RegisterDexServer(grpcSrv, apiserver.WithSignToken(apiserver.NewAPI(serverConfig.Storage, logger, version, serv.Connectors(), serv.Discovery(), serv.Backchannel()), serv.Issuer()))
 
 		grpcMetrics.InitializeMetrics(grpcSrv)
 		if c.GRPC.Reflection {
@@ -537,6 +646,66 @@ func runServe(options serveOptions) error {
 		logger.Info("shutdown now", "err", err)
 	}
 	return nil
+}
+
+// applyWebTLSPreferences sets the cipher suites and curve preferences configured in web on cfg.
+// Settings that are not configured leave cfg unchanged.
+func applyWebTLSPreferences(cfg *tls.Config, web Web) error {
+	if len(web.TLSCiphers) > 0 {
+		ciphers, err := parseCipherSuites(web.TLSCiphers)
+		if err != nil {
+			return fmt.Errorf("invalid TLS cipher suites: %w", err)
+		}
+		cfg.CipherSuites = ciphers
+	}
+	if len(web.TLSCurvePreferences) > 0 {
+		curves, err := parseCurvePreferences(web.TLSCurvePreferences)
+		if err != nil {
+			return fmt.Errorf("invalid TLS curve preferences: %w", err)
+		}
+		cfg.CurvePreferences = curves
+	}
+	return nil
+}
+
+// parseCipherSuites parses a list of cipher suite names and returns their corresponding IDs.
+// Only TLS 1.0–1.2 cipher suites are accepted, since TLS 1.3 cipher suites are not configurable.
+func parseCipherSuites(names []string) ([]uint16, error) {
+	cipherMap := make(map[string]*tls.CipherSuite)
+	for _, cs := range tls.CipherSuites() {
+		cipherMap[cs.Name] = cs
+	}
+	for _, cs := range tls.InsecureCipherSuites() {
+		cipherMap[cs.Name] = cs
+	}
+	ids := make([]uint16, 0, len(names))
+	for _, name := range names {
+		cs, ok := cipherMap[name]
+		if !ok {
+			return nil, fmt.Errorf("unsupported cipher suite %q", name)
+		}
+		if !slices.ContainsFunc(cs.SupportedVersions, func(v uint16) bool { return v <= tls.VersionTLS12 }) {
+			return nil, fmt.Errorf("cipher suite %q is TLS 1.3 only: TLS 1.3 cipher suites are not configurable", name)
+		}
+		ids = append(ids, cs.ID)
+	}
+	return ids, nil
+}
+
+// parseCurvePreferences parses a list of curve names into a list of CurveID values.
+func parseCurvePreferences(names []string) ([]tls.CurveID, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	curves := make([]tls.CurveID, 0, len(names))
+	for _, name := range names {
+		if id, ok := allowedCurveNames[name]; ok {
+			curves = append(curves, id)
+		} else {
+			return nil, fmt.Errorf("unknown curve: %q (supported: %v)", name, slices.Sorted(maps.Keys(allowedCurveNames)))
+		}
+	}
+	return curves, nil
 }
 
 func applyConfigOverrides(options serveOptions, config *Config) {
@@ -568,6 +737,9 @@ func applyConfigOverrides(options serveOptions, config *Config) {
 			"refresh_token",
 			"urn:ietf:params:oauth:grant-type:device_code",
 			"urn:ietf:params:oauth:grant-type:token-exchange",
+		}
+		if featureflags.ClientCredentialGrantEnabledByDefault.Enabled() {
+			config.OAuth2.GrantTypes = append(config.OAuth2.GrantTypes, "client_credentials")
 		}
 	}
 }
@@ -693,4 +865,97 @@ func loadTLSConfig(certFile, keyFile, caFile string, baseConfig *tls.Config) (*t
 // recordBuildInfo publishes information about Dex version and runtime info through an info metric (gauge).
 func recordBuildInfo() {
 	buildInfo.WithLabelValues(version, runtime.Version(), fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH)).Set(1)
+}
+
+func parseSessionConfig(s *Sessions) (*session.Config, error) {
+	sc := &session.Config{
+		CookieName:                 "dex_session",
+		AbsoluteLifetime:           24 * time.Hour,
+		ValidIfNotUsedFor:          1 * time.Hour,
+		RememberMeCheckedByDefault: true,
+	}
+	if s != nil {
+		if s.CookieName != "" {
+			sc.CookieName = s.CookieName
+		}
+		if s.AbsoluteLifetime != "" {
+			d, err := time.ParseDuration(s.AbsoluteLifetime)
+			if err != nil {
+				return nil, fmt.Errorf("invalid absoluteLifetime %q: %v", s.AbsoluteLifetime, err)
+			}
+			sc.AbsoluteLifetime = d
+		}
+		if s.ValidIfNotUsedFor != "" {
+			d, err := time.ParseDuration(s.ValidIfNotUsedFor)
+			if err != nil {
+				return nil, fmt.Errorf("invalid validIfNotUsedFor %q: %v", s.ValidIfNotUsedFor, err)
+			}
+			sc.ValidIfNotUsedFor = d
+		}
+		if s.RememberMeCheckedByDefault != nil {
+			sc.RememberMeCheckedByDefault = *s.RememberMeCheckedByDefault
+		}
+		if s.CookieEncryptionKey != "" {
+			sc.CookieEncryptionKey = []byte(s.CookieEncryptionKey)
+		}
+		if s.SSOSharedWithDefault != "" {
+			sc.SSOSharedWithDefault = s.SSOSharedWithDefault
+		}
+	}
+	if sc.AbsoluteLifetime <= 0 {
+		return nil, fmt.Errorf("absoluteLifetime must be positive, got %v", sc.AbsoluteLifetime)
+	}
+	if sc.ValidIfNotUsedFor <= 0 {
+		return nil, fmt.Errorf("validIfNotUsedFor must be positive, got %v", sc.ValidIfNotUsedFor)
+	}
+	if sc.ValidIfNotUsedFor > sc.AbsoluteLifetime {
+		return nil, fmt.Errorf("validIfNotUsedFor (%v) must not exceed absoluteLifetime (%v)", sc.ValidIfNotUsedFor, sc.AbsoluteLifetime)
+	}
+	if k := len(sc.CookieEncryptionKey); k > 0 && k != 16 && k != 24 && k != 32 {
+		return nil, fmt.Errorf("cookieEncryptionKey must be 16, 24, or 32 bytes (AES-128/192/256), got %d", k)
+	}
+	switch sc.SSOSharedWithDefault {
+	case "", "none", "all":
+		// valid
+	default:
+		return nil, fmt.Errorf("ssoSharedWithDefault must be \"none\" or \"all\", got %q", sc.SSOSharedWithDefault)
+	}
+	return sc, nil
+}
+
+func buildMFAProviders(authenticators []MFAAuthenticator, issuerURL string, logger *slog.Logger) map[string]mfa.Provider {
+	if len(authenticators) == 0 {
+		return nil
+	}
+
+	providers := make(map[string]mfa.Provider, len(authenticators))
+	for _, auth := range authenticators {
+		switch auth.Type {
+		case "TOTP":
+			var cfg TOTPConfig
+			if err := json.Unmarshal(auth.Config, &cfg); err != nil {
+				logger.Error("failed to parse TOTP config", "id", auth.ID, "err", err)
+				continue
+			}
+			providers[auth.ID] = mfa.NewTOTPProvider(cfg.Issuer, auth.ConnectorTypes)
+			logger.Info("MFA authenticator configured", "id", auth.ID, "type", auth.Type)
+		case "WebAuthn":
+			var cfg WebAuthnConfig
+			if err := json.Unmarshal(auth.Config, &cfg); err != nil {
+				logger.Error("failed to parse WebAuthn config", "id", auth.ID, "err", err)
+				continue
+			}
+			provider, err := mfa.NewWebAuthnProvider(cfg.RPDisplayName, cfg.RPID, cfg.RPOrigins,
+				cfg.AttestationPreference, cfg.Timeout, issuerURL, auth.ConnectorTypes)
+			if err != nil {
+				logger.Error("failed to create WebAuthn provider", "id", auth.ID, "err", err)
+				continue
+			}
+			providers[auth.ID] = provider
+			logger.Info("MFA authenticator configured", "id", auth.ID, "type", auth.Type)
+		default:
+			logger.Error("unknown MFA authenticator type, skipping", "id", auth.ID, "type", auth.Type)
+		}
+	}
+	return providers
 }

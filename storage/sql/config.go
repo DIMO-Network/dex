@@ -78,7 +78,7 @@ type SSL struct {
 type Postgres struct {
 	NetworkDB
 
-	SSL SSL `json:"ssl" yaml:"ssl"`
+	SSL SSL `json:"ssl"`
 }
 
 // Open creates a new storage implementation backed by Postgres.
@@ -206,7 +206,7 @@ func (p *Postgres) open(logger *slog.Logger) (*conn, error) {
 type MySQL struct {
 	NetworkDB
 
-	SSL SSL `json:"ssl" yaml:"ssl"`
+	SSL SSL `json:"ssl"`
 
 	// TODO(pborzenkov): used by tests to reduce lock wait timeout. Should
 	// we make it exported and allow users to provide arbitrary params?
@@ -272,7 +272,7 @@ func (s *MySQL) open(logger *slog.Logger) (*conn, error) {
 	}
 
 	if s.MaxIdleConns == 0 {
-		/*Override default behaviour to fix https://github.com/dexidp/dex/issues/1608*/
+		/*Override default behavior to fix https://github.com/dexidp/dex/issues/1608*/
 		db.SetMaxIdleConns(0)
 	} else {
 		db.SetMaxIdleConns(s.MaxIdleConns)

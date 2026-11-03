@@ -14,7 +14,11 @@ func (d *Database) CreatePassword(ctx context.Context, password storage.Password
 		SetEmail(password.Email).
 		SetHash(password.Hash).
 		SetUsername(password.Username).
+		SetName(password.Name).
+		SetPreferredUsername(password.PreferredUsername).
+		SetNillableEmailVerified(password.EmailVerified).
 		SetUserID(password.UserID).
+		SetGroups(password.Groups).
 		Save(ctx)
 	if err != nil {
 		return convertDBError("create password: %w", err)
@@ -23,8 +27,8 @@ func (d *Database) CreatePassword(ctx context.Context, password storage.Password
 }
 
 // ListPasswords extracts an array of passwords from the database.
-func (d *Database) ListPasswords() ([]storage.Password, error) {
-	passwords, err := d.client.Password.Query().All(context.TODO())
+func (d *Database) ListPasswords(ctx context.Context) ([]storage.Password, error) {
+	passwords, err := d.client.Password.Query().All(ctx)
 	if err != nil {
 		return nil, convertDBError("list passwords: %w", err)
 	}
@@ -37,11 +41,11 @@ func (d *Database) ListPasswords() ([]storage.Password, error) {
 }
 
 // GetPassword extracts a password from the database by email.
-func (d *Database) GetPassword(email string) (storage.Password, error) {
+func (d *Database) GetPassword(ctx context.Context, email string) (storage.Password, error) {
 	email = strings.ToLower(email)
 	passwordFromStorage, err := d.client.Password.Query().
 		Where(password.Email(email)).
-		Only(context.TODO())
+		Only(ctx)
 	if err != nil {
 		return storage.Password{}, convertDBError("get password: %w", err)
 	}
@@ -49,11 +53,11 @@ func (d *Database) GetPassword(email string) (storage.Password, error) {
 }
 
 // DeletePassword deletes a password from the database by email.
-func (d *Database) DeletePassword(email string) error {
+func (d *Database) DeletePassword(ctx context.Context, email string) error {
 	email = strings.ToLower(email)
 	_, err := d.client.Password.Delete().
 		Where(password.Email(email)).
-		Exec(context.TODO())
+		Exec(ctx)
 	if err != nil {
 		return convertDBError("delete password: %w", err)
 	}
@@ -61,17 +65,17 @@ func (d *Database) DeletePassword(email string) error {
 }
 
 // UpdatePassword changes a password by email using an updater function and saves it to the database.
-func (d *Database) UpdatePassword(email string, updater func(old storage.Password) (storage.Password, error)) error {
+func (d *Database) UpdatePassword(ctx context.Context, email string, updater func(old storage.Password) (storage.Password, error)) error {
 	email = strings.ToLower(email)
 
-	tx, err := d.BeginTx(context.TODO())
+	tx, err := d.BeginTx(ctx)
 	if err != nil {
 		return convertDBError("update connector tx: %w", err)
 	}
 
 	passwordToUpdate, err := tx.Password.Query().
 		Where(password.Email(email)).
-		Only(context.TODO())
+		Only(ctx)
 	if err != nil {
 		return rollback(tx, "update password database: %w", err)
 	}
@@ -86,8 +90,12 @@ func (d *Database) UpdatePassword(email string, updater func(old storage.Passwor
 		SetEmail(newPassword.Email).
 		SetHash(newPassword.Hash).
 		SetUsername(newPassword.Username).
+		SetName(newPassword.Name).
+		SetPreferredUsername(newPassword.PreferredUsername).
+		SetNillableEmailVerified(newPassword.EmailVerified).
 		SetUserID(newPassword.UserID).
-		Save(context.TODO())
+		SetGroups(newPassword.Groups).
+		Save(ctx)
 	if err != nil {
 		return rollback(tx, "update password uploading: %w", err)
 	}

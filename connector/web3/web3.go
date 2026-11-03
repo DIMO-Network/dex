@@ -2,10 +2,12 @@
 package web3
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -18,12 +20,11 @@ import (
 )
 
 type Config struct {
-	InfuraID string `json:"infuraId"`
-	RPCURL   string `json:"rpcUrl"`
+	RPCURL string `json:"rpcUrl"`
 }
 
 func (c *Config) Open(id string, logger *slog.Logger) (connector.Connector, error) {
-	w := &web3Connector{infuraID: c.InfuraID, logger: *logger}
+	w := &web3Connector{logger: *logger}
 	if c.RPCURL != "" {
 		ethClient, err := createEthClient(c.RPCURL)
 		if err != nil {
@@ -38,16 +39,14 @@ func (c *Config) Open(id string, logger *slog.Logger) (connector.Connector, erro
 }
 
 type web3Connector struct {
-	infuraID  string
 	ethClient bind.ContractBackend
 	logger    slog.Logger
 }
 
-func (c *web3Connector) InfuraID() string {
-	return c.infuraID
-}
-
 var erc1271magicValue = [4]byte{0x16, 0x26, 0xba, 0x7e}
+
+// rpcTimeout bounds the chain calls of one ERC-1271 check.
+const rpcTimeout = 10 * time.Second
 
 // https://gist.github.com/dcb9/385631846097e1f59e3cba3b1d42f3ed#file-eth_sign_verify-go
 func (c *web3Connector) Verify(address, msg, signedMsg string) (connector.Identity, error) {
@@ -120,13 +119,26 @@ func (c *web3Connector) VerifyERC1271Signature(contractAddress common.Address, h
 		return identity, fmt.Errorf("error occurred completing login %w", err)
 	}
 
-	result, err := ct.IsValidSignature(nil, msgHash, signature)
+	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
+	defer cancel()
+
+	result, err := ct.IsValidSignature(&bind.CallOpts{Context: ctx}, msgHash, signature)
 	if err != nil {
 		return identity, fmt.Errorf("error occurred completing login %w", err)
 	}
 
 	if result != erc1271magicValue {
 		return identity, fmt.Errorf("given address and address recovered from signed message do not match")
+	}
+
+	// A precompiled contract answers any call but has no code, and SHA-256's output can be
+	// made to start with the magic value by searching for a signature.
+	code, err := c.ethClient.CodeAt(ctx, contractAddress, nil)
+	if err != nil {
+		return identity, fmt.Errorf("error occurred completing login %w", err)
+	}
+	if len(code) == 0 {
+		return identity, fmt.Errorf("no contract at %s", contractAddress)
 	}
 
 	identity = connector.Identity{
@@ -147,9 +159,11 @@ func signHash(data []byte) []byte {
 	return accounts.TextHash(data)
 }
 
-// recoverSigner returns the EOA behind a plain 65-byte ECDSA signature over hash, the same
-// recovery a developer license account performs before it calls isSigner. Smart-account
-// signatures (other lengths or recovery ids) report false, so those logins carry no signer.
+// recoverSigner returns the address a plain 65-byte ECDSA signature over hash recovers to, the
+// same recovery a developer license account performs before it calls isSigner. Other lengths
+// and recovery ids report false, so those logins carry no signer. A contract wallet that
+// signs its own wrapped digest still reports true, with an address that means nothing:
+// consumers only read the claim when ethereum_address is a developer license.
 func recoverSigner(hash []byte, signature []byte) (common.Address, bool) {
 	if len(signature) != 65 {
 		return common.Address{}, false

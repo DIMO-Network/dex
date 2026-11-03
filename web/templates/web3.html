@@ -11,16 +11,20 @@
     margin-top: 15px;
   }
   
-  .web3-reset-btn {
-    cursor: pointer;
-    padding: 0;
-    border: 0;
-    background-color: transparent;
-    margin-top: 15px;
-    margin-left: 15px;
+  .web3-wallet-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px;
   }
-  
-  
+
+  .web3-wallet-icon {
+    width: 24px;
+    height: 24px;
+  }
+
   .web3-btn-text {
       font-size: 16px;
     font-weight: 300;
@@ -44,13 +48,11 @@
   
 </style>
 
-<script type="module" src="../static/web3-inc3.js"></script>
+<script type="module" src="../static/web3-login.js"></script>
 
-<input type="hidden" id="tmpl-infura-id" value="{{ .InfuraID }}">
 <input type="hidden" id="tmpl-challenge-url" value="{{ .ChallengeURL }}">
 <input type="hidden" id="tmpl-auth-id" value="{{ .AuthID }}">
 <input type="hidden" id="tmpl-verify-url" value="{{ .VerifyURL }}">
-<w3m-core-button hidden="true"></w3m-core-button>
 <div class="theme-panel">
   <h2 class="theme-heading">Log in to {{ issuer }} </h2>
   <div>
@@ -62,12 +64,10 @@
     Using a hardware wallet may NOT be supported in the mobile app. We currently recommend using a browser plug-in or mobile app wallet.
   </div>
   <div>
-    <button class="web3-btn" id="connect-button">
+    <button class="web3-btn" id="connect-button" type="button">
         <span class="dex-btn-text web3-btn-text">Connect</span>
     </button>
-    <button class="web3-reset-btn" id="reset-button">
-        <span class="dex-btn-text web3-btn-text">Reset</span>
-    </button>
+    <div id="wallet-list" style="display: none;"></div>
 </div>
 </div>
 

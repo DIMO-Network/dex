@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -114,7 +113,7 @@ func TestIdentityFromCrowdUser(t *testing.T) {
 	expectEquals(t, user.Name, "testuser")
 	expectEquals(t, user.Email, "testuser@example.com")
 
-	// Test unconfigured behaviour
+	// Test unconfigured behavior
 	i := c.identityFromCrowdUser(user)
 	expectEquals(t, i.UserID, "12345")
 	expectEquals(t, i.Username, "testuser")
@@ -150,7 +149,7 @@ type TestServerResponse struct {
 func newTestCrowdConnector(baseURL string) crowdConnector {
 	connector := crowdConnector{}
 	connector.BaseURL = baseURL
-	connector.logger = slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{}))
+	connector.logger = slog.New(slog.DiscardHandler)
 	return connector
 }
 

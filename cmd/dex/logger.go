@@ -7,12 +7,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dexidp/dex/server"
+	"github.com/dexidp/dex/server/reqctx"
 )
 
 var logFormats = []string{"json", "text"}
 
-func newLogger(level slog.Level, format string) (*slog.Logger, error) {
+func newLogger(level slog.Level, format string, excludeFields []string) (*slog.Logger, error) {
 	var handler slog.Handler
 	switch strings.ToLower(format) {
 	case "", "text":
@@ -26,6 +26,8 @@ func newLogger(level slog.Level, format string) (*slog.Logger, error) {
 	default:
 		return nil, fmt.Errorf("log format is not one of the supported values (%s): %s", strings.Join(logFormats, ", "), format)
 	}
+
+	handler = newExcludingHandler(handler, excludeFields)
 
 	return slog.New(newRequestContextHandler(handler)), nil
 }
@@ -47,12 +49,12 @@ func (h requestContextHandler) Enabled(ctx context.Context, level slog.Level) bo
 }
 
 func (h requestContextHandler) Handle(ctx context.Context, record slog.Record) error {
-	if v, ok := ctx.Value(server.RequestKeyRemoteIP).(string); ok {
-		record.AddAttrs(slog.String(string(server.RequestKeyRemoteIP), v))
+	if v, ok := ctx.Value(reqctx.RequestKeyRemoteIP).(string); ok {
+		record.AddAttrs(slog.String(string(reqctx.RequestKeyRemoteIP), v))
 	}
 
-	if v, ok := ctx.Value(server.RequestKeyRequestID).(string); ok {
-		record.AddAttrs(slog.String(string(server.RequestKeyRequestID), v))
+	if v, ok := ctx.Value(reqctx.RequestKeyRequestID).(string); ok {
+		record.AddAttrs(slog.String(string(reqctx.RequestKeyRequestID), v))
 	}
 
 	return h.handler.Handle(ctx, record)
@@ -63,5 +65,5 @@ func (h requestContextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 }
 
 func (h requestContextHandler) WithGroup(name string) slog.Handler {
-	return h.handler.WithGroup(name)
+	return requestContextHandler{h.handler.WithGroup(name)}
 }
