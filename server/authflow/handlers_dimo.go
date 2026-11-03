@@ -56,10 +56,10 @@ func (h *Handler) startFormPOSTLogin(w http.ResponseWriter, r *http.Request, con
 }
 
 // renderWeb3Login renders the page that asks the browser wallet to sign in.
-func (h *Handler) renderWeb3Login(w http.ResponseWriter, r *http.Request, conn connector.Web3Connector, connID, authID string) {
+func (h *Handler) renderWeb3Login(w http.ResponseWriter, r *http.Request, connID, authID string) {
 	challengeURL := url.URL{Path: h.IssuerURL.AbsPath("/auth", connID, "challenge")}
 	verifyURL := url.URL{Path: h.IssuerURL.AbsPath("/auth", connID, "verify")}
-	if err := h.Templates.Web3Login(r, w, challengeURL.String(), verifyURL.String(), authID, conn.InfuraID()); err != nil {
+	if err := h.Templates.Web3Login(r, w, challengeURL.String(), verifyURL.String(), authID); err != nil {
 		h.Logger.ErrorContext(r.Context(), "server template error", "err", err)
 	}
 }

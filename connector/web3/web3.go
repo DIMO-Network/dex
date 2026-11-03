@@ -20,12 +20,11 @@ import (
 )
 
 type Config struct {
-	InfuraID string `json:"infuraId"`
-	RPCURL   string `json:"rpcUrl"`
+	RPCURL string `json:"rpcUrl"`
 }
 
 func (c *Config) Open(id string, logger *slog.Logger) (connector.Connector, error) {
-	w := &web3Connector{infuraID: c.InfuraID, logger: *logger}
+	w := &web3Connector{logger: *logger}
 	if c.RPCURL != "" {
 		ethClient, err := createEthClient(c.RPCURL)
 		if err != nil {
@@ -40,13 +39,8 @@ func (c *Config) Open(id string, logger *slog.Logger) (connector.Connector, erro
 }
 
 type web3Connector struct {
-	infuraID  string
 	ethClient bind.ContractBackend
 	logger    slog.Logger
-}
-
-func (c *web3Connector) InfuraID() string {
-	return c.infuraID
 }
 
 var erc1271magicValue = [4]byte{0x16, 0x26, 0xba, 0x7e}

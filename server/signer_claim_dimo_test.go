@@ -115,8 +115,6 @@ type web3Stub struct {
 	reject bool
 }
 
-func (web3Stub) InfuraID() string { return "" }
-
 func (w web3Stub) Verify(address, _, _ string) (connector.Identity, error) {
 	if w.reject {
 		return connector.Identity{}, errors.New("signature rejected")

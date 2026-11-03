@@ -282,7 +282,7 @@ connectors:
   id: web3
   name: Web3
 #  config:
-#   infuraId: $INFURA_ID
+#   rpcUrl: $ETHEREUM_RPC_URL
 # - type: google
 #   id: google
 #   name: Google

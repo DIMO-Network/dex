@@ -219,7 +219,7 @@ func (h *Handler) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 			  </body>
 			  </html>`, action, value, authReq.ID)
 		case connector.Web3Connector:
-			h.renderWeb3Login(w, r, conn, connID, authReq.ID)
+			h.renderWeb3Login(w, r, connID, authReq.ID)
 		default:
 			h.renderError(r, w, http.StatusBadRequest, "Requested resource does not exist.")
 		}
