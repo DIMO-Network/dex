@@ -102,7 +102,7 @@ func (h *Handler) handleConnectorLogin(w http.ResponseWriter, r *http.Request) {
 	// handle prompt only if sessions are enabled
 	if h.Sessions.Enabled() {
 		// Retrieve the session once for use in both hint and prompt logic.
-		session := h.Sessions.ValidAuthSession(ctx, w, r, authReq)
+		session := h.resumableSession(ctx, w, r, authReq, conn.Connector)
 
 		// id_token_hint logic (OIDC Core 1.0 3.1.2.1):
 		// When a hint is provided, verify that the session user matches.

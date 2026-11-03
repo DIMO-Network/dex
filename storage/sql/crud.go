@@ -588,20 +588,18 @@ func (c *conn) CreateClient(ctx context.Context, cli storage.Client) error {
 // getDeveloperClient retrieves a developer client from the GraphQL API using the provided client ID.
 //
 // Parameters:
+// - ctx: Bounds the API request.
 // - clientID: A string representing the Ethereum address of the client.
 //
 // Returns:
 // - A storage.Client object containing the client details, including redirect URIs.
-// - An error if the client ID is invalid, the API request fails, or the response contains errors.
-func getDeveloperClient(clientID string) (cli storage.Client, err error) {
-	// Validate the client ID as a mixed-case Ethereum address.
+// - storage.ErrNotFound if the client ID is not a checksummed address or has no license.
+// - Any other error if the API request fails, or the response contains other errors.
+func getDeveloperClient(ctx context.Context, clientID string) (cli storage.Client, err error) {
+	// Only a mixed-case Ethereum address can be a developer license.
 	mca, err := common.NewMixedcaseAddressFromString(clientID)
-	if err != nil {
-		return cli, fmt.Errorf("invalid client ID: %s %w", clientID, err)
-	}
-
-	if !mca.ValidChecksum() {
-		return cli, fmt.Errorf("address not checksummed")
+	if err != nil || !mca.ValidChecksum() {
+		return cli, storage.ErrNotFound
 	}
 
 	// TODO(elffjs): Handle the case of more than 100 redirects.
@@ -636,7 +634,10 @@ func getDeveloperClient(clientID string) (cli storage.Client, err error) {
 			} `json:"developerLicense"`
 		} `json:"data"`
 		Errors []struct {
-			Message string `json:"message"`
+			Message    string `json:"message"`
+			Extensions struct {
+				Code string `json:"code"`
+			} `json:"extensions"`
 		} `json:"errors"`
 	}
 
@@ -653,7 +654,7 @@ func getDeveloperClient(clientID string) (cli storage.Client, err error) {
 	if endpoint == "" {
 		return cli, fmt.Errorf("environment variable IDENTITY_API_URL is not set")
 	}
-	res, err := sendGraphQLRequestWithRetries(endpoint, req, 3, 1*time.Second)
+	res, err := sendGraphQLRequestWithRetries(ctx, endpoint, req, 2, 500*time.Millisecond)
 	if err != nil {
 		return cli, fmt.Errorf("failed to send GraphQL request: %w", err)
 	}
@@ -676,12 +677,15 @@ func getDeveloperClient(clientID string) (cli storage.Client, err error) {
 	}
 
 	if len(r.Errors) > 0 {
+		if r.Errors[0].Extensions.Code == "NOT_FOUND" {
+			return cli, storage.ErrNotFound
+		}
 		return cli, fmt.Errorf("GraphQL error: %s", r.Errors[0].Message)
 	}
 
 	// Handle cases where the GraphQL response indicates missing data.
 	if r.Data == nil || r.Data.DeveloperLicense.RedirectURIs.Nodes == nil {
-		return cli, fmt.Errorf("developer license not found for client ID: %s", clientID)
+		return cli, storage.ErrNotFound
 	}
 
 	// Extract redirect URIs from the response.
@@ -692,17 +696,29 @@ func getDeveloperClient(clientID string) (cli storage.Client, err error) {
 
 	return storage.Client{
 		ID:           clientID,
+		Name:         clientID,
 		RedirectURIs: uris,
 		Public:       true,
 	}, nil
 }
 
-func sendGraphQLRequestWithRetries(endpoint string, reqBody []byte, maxRetries int, backoff time.Duration) (*http.Response, error) {
+// identityAPIClient bounds each attempt at the identity API. The caller's context bounds
+// all of them.
+var identityAPIClient = &http.Client{Timeout: 3 * time.Second}
+
+func sendGraphQLRequestWithRetries(ctx context.Context, endpoint string, reqBody []byte, maxRetries int, backoff time.Duration) (*http.Response, error) {
 	var res *http.Response
 	var err error
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
-		res, err = http.Post(endpoint, "application/json", bytes.NewBuffer(reqBody))
+		var req *http.Request
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(reqBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		res, err = identityAPIClient.Do(req)
 		if err == nil {
 			return res, nil
 		}
@@ -710,7 +726,11 @@ func sendGraphQLRequestWithRetries(endpoint string, reqBody []byte, maxRetries i
 		// Retry if the maximum retries are not reached
 		if attempt < maxRetries {
 			// Wait before retrying
-			time.Sleep(backoff)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
 			// Exponential backoff
 			backoff *= 2
 		} else {
@@ -722,19 +742,19 @@ func sendGraphQLRequestWithRetries(endpoint string, reqBody []byte, maxRetries i
 }
 
 func getClient(ctx context.Context, q querier, id string) (storage.Client, error) {
-	client, err := scanClient(q.QueryRow(`
+	return scanClient(q.QueryRow(`
 		select
 			id, secret, redirect_uris, trusted_peers, public, name, logo_url, allowed_connectors, mfa_chain, post_logout_redirect_uris, sso_shared_with, backchannel_logout_uri, refresh_token_lifetime
 	    from client where id = $1;
 	`, id))
-	if err == storage.ErrNotFound {
-		return getDeveloperClient(id)
-	}
-	return client, err
 }
 
 func (c *conn) GetClient(ctx context.Context, id string) (storage.Client, error) {
-	return getClient(ctx, c, id)
+	client, err := getClient(ctx, c, id)
+	if err == storage.ErrNotFound {
+		return getDeveloperClient(ctx, id)
+	}
+	return client, err
 }
 
 func (c *conn) ListClients(ctx context.Context) ([]storage.Client, error) {

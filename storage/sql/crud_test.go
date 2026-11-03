@@ -13,6 +13,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -109,7 +110,29 @@ func TestGetDeveloperClient(t *testing.T) {
 			mockStatusCode: http.StatusOK,
 			expectedClient: storage.Client{
 				ID:           "0x1549487A47332da96cc3EE18D860aaE7b45E2eF3",
+				Name:         "0x1549487A47332da96cc3EE18D860aaE7b45E2eF3",
 				RedirectURIs: []string{"https://example.com/callback"},
+				Public:       true,
+			},
+			expectedError: "",
+		},
+		{
+			name:     "No Redirect URIs",
+			clientID: "0x1549487A47332da96cc3EE18D860aaE7b45E2eF3",
+			mockResponse: map[string]interface{}{
+				"data": map[string]interface{}{
+					"developerLicense": map[string]interface{}{
+						"redirectURIs": map[string]interface{}{
+							"nodes": []map[string]interface{}{},
+						},
+					},
+				},
+			},
+			mockStatusCode: http.StatusOK,
+			expectedClient: storage.Client{
+				ID:           "0x1549487A47332da96cc3EE18D860aaE7b45E2eF3",
+				Name:         "0x1549487A47332da96cc3EE18D860aaE7b45E2eF3",
+				RedirectURIs: []string{},
 				Public:       true,
 			},
 			expectedError: "",
@@ -117,7 +140,12 @@ func TestGetDeveloperClient(t *testing.T) {
 		{
 			name:          "Invalid ClientID Error",
 			clientID:      "0xInvalidClientID",
-			expectedError: "invalid client ID: 0xInvalidClientID invalid address",
+			expectedError: storage.ErrNotFound.Error(),
+		},
+		{
+			name:          "Not Checksummed",
+			clientID:      "0x1549487a47332da96cc3ee18d860aae7b45e2ef3",
+			expectedError: storage.ErrNotFound.Error(),
 		},
 		{
 			name:     "Missing Data",
@@ -138,7 +166,28 @@ func TestGetDeveloperClient(t *testing.T) {
 			},
 			mockStatusCode: http.StatusOK,
 			expectedClient: storage.Client{},
-			expectedError:  "No developer license with client id 0x1549487A47332Da96CC3eE18D860aAE7B45e2Ef3.",
+			expectedError:  storage.ErrNotFound.Error(),
+		},
+		{
+			name:     "Other GraphQL Error",
+			clientID: "0x1549487A47332da96cc3EE18D860aaE7b45E2eF3",
+			mockResponse: map[string]interface{}{
+				"errors": []map[string]interface{}{
+					{"message": "database unavailable"},
+				},
+				"data": nil,
+			},
+			mockStatusCode: http.StatusOK,
+			expectedClient: storage.Client{},
+			expectedError:  "GraphQL error: database unavailable",
+		},
+		{
+			name:           "Server Error",
+			clientID:       "0x1549487A47332da96cc3EE18D860aaE7b45E2eF3",
+			mockResponse:   map[string]interface{}{},
+			mockStatusCode: http.StatusBadGateway,
+			expectedClient: storage.Client{},
+			expectedError:  "unexpected HTTP status: 502",
 		},
 		{
 			name:     "Missing Data 1",
@@ -150,7 +199,7 @@ func TestGetDeveloperClient(t *testing.T) {
 			},
 			mockStatusCode: http.StatusOK,
 			expectedClient: storage.Client{},
-			expectedError:  "developer license not found for client ID: 0x1549487A47332da96cc3EE18D860aaE7b45E2eF3",
+			expectedError:  storage.ErrNotFound.Error(),
 		},
 	}
 
@@ -170,16 +219,69 @@ func TestGetDeveloperClient(t *testing.T) {
 			defer os.Unsetenv("IDENTITY_API_URL")
 
 			// Call the function
-			client, err := getDeveloperClient(tt.clientID)
+			client, err := getDeveloperClient(context.Background(), tt.clientID)
 
 			// Validate results
 			if tt.expectedError != "" {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedError)
+				assert.EqualError(t, err, tt.expectedError)
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tt.expectedClient, client)
 			}
 		})
 	}
+}
+
+func TestGetDeveloperClientHonoursContext(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		<-release
+	}))
+	defer server.Close()
+	defer close(release)
+	t.Setenv("IDENTITY_API_URL", server.URL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := getDeveloperClient(ctx, "0x1549487A47332da96cc3EE18D860aaE7b45E2eF3")
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, time.Since(start), time.Second)
+}
+
+// A client missing from the database may be a developer license, which GetClient resolves.
+// UpdateClient only changes the database, so it can't update one.
+func TestDeveloperLicenseIsReadOnly(t *testing.T) {
+	const license = "0x1549487A47332da96cc3EE18D860aaE7b45E2eF3"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": map[string]interface{}{
+				"developerLicense": map[string]interface{}{
+					"redirectURIs": map[string]interface{}{
+						"nodes": []map[string]interface{}{{"uri": "https://example.com/callback"}},
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+	t.Setenv("IDENTITY_API_URL", server.URL)
+
+	c, err := (&SQLite3{File: ":memory:"}).open(slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	client, err := c.GetClient(context.Background(), license)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"https://example.com/callback"}, client.RedirectURIs)
+
+	err = c.UpdateClient(context.Background(), license, func(old storage.Client) (storage.Client, error) {
+		t.Error("updater ran for a client that isn't in the database")
+		return old, nil
+	})
+	assert.ErrorIs(t, err, storage.ErrNotFound)
 }

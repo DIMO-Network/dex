@@ -56,24 +56,18 @@ func TestClientTokenLifetime(t *testing.T) {
 	tests := []struct {
 		name    string
 		expiry  string
-		absent  bool
 		wantFor time.Duration
 	}{
 		{name: "no override uses the global lifetime", wantFor: global},
 		{name: "a shorter override wins", expiry: "1h", wantFor: time.Hour},
 		{name: "an override can't extend the global lifetime", expiry: "3h", wantFor: global},
 		{name: "an invalid override falls back to global", expiry: "soon", wantFor: global},
-		{name: "a client missing from storage uses the global lifetime", absent: true, wantFor: global},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			store := memory.New(slog.New(slog.DiscardHandler))
-			if !tc.absent {
-				store = storage.WithStaticClients(store, []storage.Client{{ID: "client", IDTokenExpiry: tc.expiry}})
-			}
-			issuer := newDIMOTestIssuer(t, store, global)
+			issuer := newDIMOTestIssuer(t, memory.New(slog.New(slog.DiscardHandler)), global)
 
-			token, expiry, err := issuer.SignIDToken(t.Context(), Authorization{Client: storage.Client{ID: "client"}, Scopes: []string{ScopeOpenID}}, "", "")
+			token, expiry, err := issuer.SignIDToken(t.Context(), Authorization{Client: storage.Client{ID: "client", IDTokenExpiry: tc.expiry}, Scopes: []string{ScopeOpenID}}, "", "")
 			require.NoError(t, err)
 
 			claims := decodeClaims(t, token)
@@ -83,13 +77,14 @@ func TestClientTokenLifetime(t *testing.T) {
 	}
 }
 
-// A lifetime that can't be read must not silently become the longer global one.
-func TestSignIDTokenFailsWhenClientUnreadable(t *testing.T) {
+// Grants sign after spending the code or refresh token, so signing must not need storage:
+// a client lookup that failed there would lose them.
+func TestSignIDTokenDoesNotReadClients(t *testing.T) {
 	store := failingClients{memory.New(slog.New(slog.DiscardHandler))}
 	issuer := newDIMOTestIssuer(t, store, time.Hour)
 
 	_, _, err := issuer.SignIDToken(t.Context(), Authorization{Client: storage.Client{ID: "client"}}, "", "")
-	require.Error(t, err)
+	require.NoError(t, err)
 }
 
 func TestDIMOClaims(t *testing.T) {

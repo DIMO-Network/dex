@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc"
@@ -196,7 +197,10 @@ var (
 )
 
 type oidcConnector struct {
-	provider                  *oidc.Provider
+	provider *oidc.Provider
+	// secretMu guards secret and oauth2Config's ClientSecret. Read the config through
+	// currentConfig.
+	secretMu                  sync.Mutex
 	secret                    *secret.Secret
 	redirectURI               string
 	oauth2Config              *oauth2.Config
@@ -220,17 +224,31 @@ func (c *oidcConnector) Close() error {
 	return nil
 }
 
-func (c *oidcConnector) LoginURL(s connector.Scopes, callbackURL, state string) (string, error) {
-	if c.redirectURI != callbackURL {
-		return "", fmt.Errorf("expected callback URL %q did not match the URL in the config %q", callbackURL, c.redirectURI)
-	}
+// currentConfig returns a copy of the OAuth2 config with a client secret that hasn't expired.
+func (c *oidcConnector) currentConfig() (*oauth2.Config, error) {
+	c.secretMu.Lock()
+	defer c.secretMu.Unlock()
+
 	if c.secret.IsExpired() {
 		// secret has expired, grab a new one.
 		clientSecret, err := c.secret.GetSecret()
 		if err != nil {
-			return "", fmt.Errorf("failed to generated client secret: %v", err)
+			return nil, fmt.Errorf("failed to generated client secret: %v", err)
 		}
 		c.oauth2Config.ClientSecret = clientSecret
+	}
+
+	config := *c.oauth2Config
+	return &config, nil
+}
+
+func (c *oidcConnector) LoginURL(s connector.Scopes, callbackURL, state string) (string, error) {
+	if c.redirectURI != callbackURL {
+		return "", fmt.Errorf("expected callback URL %q did not match the URL in the config %q", callbackURL, c.redirectURI)
+	}
+	config, err := c.currentConfig()
+	if err != nil {
+		return "", err
 	}
 
 	var opts []oauth2.AuthCodeOption
@@ -246,13 +264,22 @@ func (c *oidcConnector) LoginURL(s connector.Scopes, callbackURL, state string) 
 		opts = append(opts, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", c.promptType))
 	}
 	opts = append(opts, oauth2.SetAuthURLParam("response_mode", "form_post"))
-	return c.oauth2Config.AuthCodeURL(state, opts...), nil
+	return config.AuthCodeURL(state, opts...), nil
 }
 
 func (c *oidcConnector) HandlePOST(s connector.Scopes, r *http.Request) (identity connector.Identity, err error) {
+	if errType := r.PostFormValue("error"); errType != "" {
+		return identity, fmt.Errorf("oidc: authorization failed: %s", errType)
+	}
+
+	config, err := c.currentConfig()
+	if err != nil {
+		return identity, err
+	}
+
 	code := r.PostFormValue("code")
 
-	token, err := c.oauth2Config.Exchange(r.Context(), code)
+	token, err := config.Exchange(r.Context(), code)
 	if err != nil {
 		return identity, fmt.Errorf("oidc: failed to get token: %v", err)
 	}
@@ -268,11 +295,16 @@ func (c *oidcConnector) Refresh(ctx context.Context, s connector.Scopes, identit
 		return identity, fmt.Errorf("oidc: failed to unmarshal connector data: %v", err)
 	}
 
+	config, err := c.currentConfig()
+	if err != nil {
+		return identity, err
+	}
+
 	t := &oauth2.Token{
 		RefreshToken: string(cd.RefreshToken),
 		Expiry:       time.Now().Add(-time.Hour),
 	}
-	token, err := c.oauth2Config.TokenSource(ctx, t).Token()
+	token, err := config.TokenSource(ctx, t).Token()
 	if err != nil {
 		return identity, fmt.Errorf("oidc: failed to get refresh token: %v", err)
 	}
@@ -340,12 +372,14 @@ func (c *oidcConnector) createIdentity(ctx context.Context, identity connector.I
 		return identity, fmt.Errorf("missing email claim, not found \"%s\" key", emailKey)
 	}
 
-	_emailVerified, found := claims["email_verified"].(string)
+	// Apple sends this as a string or a boolean.
 	var emailVerified bool
-	if found && _emailVerified == "true" {
-		emailVerified = true
-	}
-	if !found {
+	switch v := claims["email_verified"].(type) {
+	case string:
+		emailVerified = v == "true"
+	case bool:
+		emailVerified = v
+	default:
 		if c.insecureSkipEmailVerified {
 			emailVerified = true
 		} else if hasEmailScope {

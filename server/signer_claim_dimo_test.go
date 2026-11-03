@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -97,22 +98,29 @@ func TestExchangeAuthCodeSignerAddressClaim(t *testing.T) {
 	}
 }
 
-// web3StubConfig opens a Web3 connector that accepts any signature and reports Signer as
-// the challenge signer, so the generate_challenge → submit_challenge → token chain runs
-// end to end without a blockchain.
+// web3StubConfig opens a Web3 connector that accepts any signature, or none if Reject is set,
+// and reports Signer as the challenge signer, so the generate_challenge → submit_challenge →
+// token chain runs end to end without a blockchain.
 type web3StubConfig struct {
 	Signer string `json:"signer"`
+	Reject bool   `json:"reject"`
 }
 
 func (c *web3StubConfig) Open(string, *slog.Logger) (connector.Connector, error) {
-	return web3Stub{signer: c.Signer}, nil
+	return web3Stub{signer: c.Signer, reject: c.Reject}, nil
 }
 
-type web3Stub struct{ signer string }
+type web3Stub struct {
+	signer string
+	reject bool
+}
 
 func (web3Stub) InfuraID() string { return "" }
 
 func (w web3Stub) Verify(address, _, _ string) (connector.Identity, error) {
+	if w.reject {
+		return connector.Identity{}, errors.New("signature rejected")
+	}
 	identity := connector.Identity{UserID: address, Username: address}
 	if w.signer != "" {
 		data, err := json.Marshal(connector.Web3SignerData{SignerAddress: w.signer})

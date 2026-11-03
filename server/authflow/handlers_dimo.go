@@ -4,8 +4,10 @@ package authflow
 // endpoints, plus the connector-specific steps login.go hands off to.
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -21,6 +23,9 @@ import (
 	"github.com/dexidp/dex/server/router"
 	"github.com/dexidp/dex/storage"
 )
+
+// errLoginCompleted refuses a change to an auth request that already holds a login.
+var errLoginCompleted = errors.New("login already completed")
 
 type web3ConnectorData struct {
 	Address string `json:"address"`
@@ -105,6 +110,12 @@ func (h *Handler) parseConnectorAuthRequest(w http.ResponseWriter, r *http.Reque
 		return nil, false
 	}
 
+	if _, ok := conn.Connector.(connector.Web3Connector); !ok {
+		h.Logger.ErrorContext(ctx, "web3 login requested on another connector", "connector_id", connID)
+		h.renderErrorJSON(w, http.StatusBadRequest, "Requested connector does not support this login.")
+		return nil, false
+	}
+
 	grantType := h.grantTypeFromAuthRequest(r)
 	if !connectors.GrantTypeAllowed(conn.GrantTypes, grantType) {
 		h.Logger.ErrorContext(ctx, "connector does not allow requested grant type", "connector_id", connID, "grant_type", grantType)
@@ -172,13 +183,51 @@ func (h *Handler) handleGenerateChallenge(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
-
 	h.renderJSON(w, struct {
 		State     string `json:"state"`
 		Challenge string `json:"challenge"`
 	}{authReq.ID, challenge})
+}
+
+// openWeb3Login loads the auth request state for a web3 login still in progress on the
+// connector in the path, and returns it with that connector. A logged-in request holds the
+// identity the /auth dispatcher and the token endpoint will use, so nothing here may change
+// it. On failure it writes the response and returns false.
+func (h *Handler) openWeb3Login(w http.ResponseWriter, r *http.Request, state string) (storage.AuthRequest, connector.Web3Connector, bool) {
+	ctx := r.Context()
+	authReq, err := h.Storage.GetAuthRequest(ctx, state)
+	if err != nil {
+		h.renderErrorJSON(w, http.StatusBadRequest, "Requested resource does not exist.")
+		return storage.AuthRequest{}, nil, false
+	}
+
+	if connID, err := url.PathUnescape(mux.Vars(r)["connector"]); err != nil || connID != authReq.ConnectorID {
+		h.renderErrorJSON(w, http.StatusBadRequest, "Bad connector ID")
+		return storage.AuthRequest{}, nil, false
+	}
+
+	if authReq.LoggedIn {
+		h.renderErrorJSON(w, http.StatusBadRequest, "Login already completed.")
+		return storage.AuthRequest{}, nil, false
+	}
+
+	if h.Now().After(authReq.Expiry) {
+		h.renderErrorJSON(w, http.StatusBadRequest, "User session has expired.")
+		return storage.AuthRequest{}, nil, false
+	}
+
+	conn, err := h.Connectors.Get(ctx, authReq.ConnectorID)
+	if err != nil {
+		h.renderErrorJSON(w, http.StatusBadRequest, "Requested resource does not exist.")
+		return storage.AuthRequest{}, nil, false
+	}
+
+	w3Conn, ok := conn.Connector.(connector.Web3Connector)
+	if !ok {
+		h.renderErrorJSON(w, http.StatusBadRequest, "Requested resource does not exist.")
+		return storage.AuthRequest{}, nil, false
+	}
+	return authReq, w3Conn, true
 }
 
 func (h *Handler) handleChallenge(w http.ResponseWriter, r *http.Request) {
@@ -202,9 +251,8 @@ func (h *Handler) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		nonceReq.Address = mixAddr.Address().Hex()
 	}
 
-	authReq, err := h.Storage.GetAuthRequest(r.Context(), nonceReq.State)
-	if err != nil {
-		h.renderErrorJSON(w, http.StatusBadRequest, "Requested resource does not exist.")
+	authReq, _, ok := h.openWeb3Login(w, r, nonceReq.State)
+	if !ok {
 		return
 	}
 
@@ -225,13 +273,23 @@ func (h *Handler) handleChallenge(w http.ResponseWriter, r *http.Request) {
 		h.renderErrorJSON(w, http.StatusInternalServerError, "Failed to create auth request.")
 		return
 	}
-	h.Storage.UpdateAuthRequest(r.Context(), authReq.ID, func(a storage.AuthRequest) (storage.AuthRequest, error) {
+	// A login may have finished since openWeb3Login: check again where the write happens.
+	err = h.Storage.UpdateAuthRequest(r.Context(), authReq.ID, func(a storage.AuthRequest) (storage.AuthRequest, error) {
+		if a.LoggedIn {
+			return a, errLoginCompleted
+		}
 		a.ConnectorData = bts
 		return a, nil
 	})
-
-	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/json")
+	switch {
+	case errors.Is(err, errLoginCompleted):
+		h.renderErrorJSON(w, http.StatusBadRequest, "Login already completed.")
+		return
+	case err != nil:
+		h.Logger.ErrorContext(r.Context(), "failed to store challenge", "err", err)
+		h.renderErrorJSON(w, http.StatusInternalServerError, "Failed to update auth request.")
+		return
+	}
 
 	h.renderJSON(w, struct {
 		Nonce string `json:"nonce"`
@@ -273,26 +331,13 @@ func generateNonce() (string, error) {
 // and finalizes the login. On failure it writes the response and returns false.
 func (h *Handler) verifySignature(w http.ResponseWriter, r *http.Request, state, signed string) (storage.AuthRequest, bool) {
 	ctx := r.Context()
-	authReq, err := h.Storage.GetAuthRequest(ctx, state)
-	if err != nil {
-		h.renderErrorJSON(w, http.StatusBadRequest, "Requested resource does not exist.")
+	authReq, w3Conn, ok := h.openWeb3Login(w, r, state)
+	if !ok {
 		return storage.AuthRequest{}, false
 	}
 
 	var data web3ConnectorData
 	json.Unmarshal(authReq.ConnectorData, &data)
-
-	conn, err := h.Connectors.Get(ctx, authReq.ConnectorID)
-	if err != nil {
-		h.renderErrorJSON(w, http.StatusInternalServerError, "Requested resource does not exist.")
-		return storage.AuthRequest{}, false
-	}
-
-	w3Conn, ok := conn.Connector.(connector.Web3Connector)
-	if !ok {
-		h.renderErrorJSON(w, http.StatusInternalServerError, "Requested resource does not exist.")
-		return storage.AuthRequest{}, false
-	}
 
 	identity, err := w3Conn.Verify(data.Address, data.Nonce, signed)
 	if err != nil {
@@ -300,7 +345,7 @@ func (h *Handler) verifySignature(w http.ResponseWriter, r *http.Request, state,
 		return storage.AuthRequest{}, false
 	}
 
-	authReq, err = h.finalizeLogin(ctx, identity, authReq, conn.Connector)
+	authReq, err = h.finalizeLogin(ctx, identity, authReq, w3Conn)
 	if err != nil {
 		h.Logger.ErrorContext(ctx, "failed to finalize login", "err", err)
 		h.renderErrorJSON(w, http.StatusInternalServerError, "Login failure.")
@@ -391,13 +436,13 @@ func (h *Handler) issueDirectCode(w http.ResponseWriter, r *http.Request, state,
 
 	// MFA only runs on the dispatcher's path. Refuse rather than skip it.
 	if h.MFAEnabled {
-		required, err := h.mfaRequired(ctx, authReq.ClientID)
+		chain, err := h.MFAChain(ctx, authReq.ClientID, authReq.ConnectorID)
 		if err != nil {
 			h.Logger.ErrorContext(ctx, "failed to determine MFA requirement", "err", err)
 			h.renderErrorJSON(w, http.StatusInternalServerError, "Internal server error.")
 			return storage.AuthCode{}, false
 		}
-		if required {
+		if len(chain) > 0 {
 			h.renderErrorJSON(w, http.StatusForbidden, "This client requires MFA, which this login does not support.")
 			return storage.AuthCode{}, false
 		}
@@ -456,6 +501,27 @@ func (h *Handler) handleCreateAuthorizationRequest(w http.ResponseWriter, r *htt
 	h.renderJSON(w, struct {
 		State string `json:"state"`
 	}{authReq.ID})
+}
+
+// resumableSession returns the session a login on conn may resume. A web3 login never
+// resumes one: each signature proves the signer is still a signer, and the token carries
+// that signer, while a resumed session has neither.
+func (h *Handler) resumableSession(ctx context.Context, w http.ResponseWriter, r *http.Request, authReq *storage.AuthRequest, conn connector.Connector) *storage.AuthSession {
+	if _, ok := conn.(connector.Web3Connector); ok {
+		return nil
+	}
+	return h.Sessions.ValidAuthSession(ctx, w, r, authReq)
+}
+
+// tokenClient returns the client to sign clientID's implicit and hybrid tokens with, which
+// has to carry its IDTokenExpiry. Only static clients set that and those always load, so a
+// failed load means the client has no override.
+func (h *Handler) tokenClient(ctx context.Context, clientID string) storage.Client {
+	client, err := h.Storage.GetClient(ctx, clientID)
+	if err != nil {
+		h.Logger.ErrorContext(ctx, "failed to get client", "client_id", clientID, "err", err)
+	}
+	return storage.Client{ID: clientID, IDTokenExpiry: client.IDTokenExpiry}
 }
 
 func (h *Handler) renderJSON(w http.ResponseWriter, body interface{}) {

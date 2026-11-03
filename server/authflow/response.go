@@ -192,7 +192,7 @@ func (h *Handler) issueAccessToken(ctx context.Context, w http.ResponseWriter, r
 	}
 	resp.implicitOrHybrid = true
 	accessToken, _, err := h.Issuer.SignAccessToken(ctx, tokens.Authorization{
-		Client:      storage.Client{ID: authReq.ClientID},
+		Client:      h.tokenClient(ctx, authReq.ClientID),
 		Claims:      authReq.Claims,
 		Scopes:      authReq.Scopes,
 		ConnectorID: authReq.ConnectorID,
@@ -217,7 +217,7 @@ func (h *Handler) issueIDToken(ctx context.Context, w http.ResponseWriter, r *ht
 	}
 	resp.implicitOrHybrid = true
 	idToken, idTokenExpiry, err := h.Issuer.SignIDToken(ctx, tokens.Authorization{
-		Client:      storage.Client{ID: authReq.ClientID},
+		Client:      h.tokenClient(ctx, authReq.ClientID),
 		Claims:      authReq.Claims,
 		Scopes:      authReq.Scopes,
 		ConnectorID: authReq.ConnectorID,

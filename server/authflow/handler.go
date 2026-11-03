@@ -1,6 +1,7 @@
 package authflow
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -50,6 +51,8 @@ type Handler struct {
 	SkipApproval bool
 	// TokenEndpoint serves a token request; DIMO's submit_challenge ends in one.
 	TokenEndpoint http.HandlerFunc
+	// MFAChain resolves the authenticators that apply to a login, for DIMO's direct logins.
+	MFAChain func(ctx context.Context, clientID, connectorID string) ([]string, error)
 }
 
 // Mount registers the login routes. The /auth endpoint is both the entry

@@ -1,6 +1,7 @@
 package web3
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
@@ -64,6 +66,27 @@ func signerData(t *testing.T, signer common.Address) []byte {
 	data, err := json.Marshal(connector.Web3SignerData{SignerAddress: signer.Hex()})
 	assert.NoError(t, err)
 	return data
+}
+
+// codelessBackend answers contract calls with the ERC-1271 magic value and holds no code, as
+// the SHA-256 precompile does for a signature searched to make its hash start that way.
+type codelessBackend struct{ bind.ContractBackend }
+
+func (codelessBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
+	return common.RightPadBytes(erc1271magicValue[:], 32), nil
+}
+
+func (codelessBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
+	return nil, nil
+}
+
+func TestERC1271RefusesAddressWithoutCode(t *testing.T) {
+	conn := newConnector()
+	conn.ethClient = codelessBackend{}
+
+	sha256Precompile := common.BytesToAddress([]byte{2})
+	_, err := conn.Verify(sha256Precompile.Hex(), "message", hexutil.Encode(make([]byte, 32)))
+	assert.ErrorContains(t, err, "no contract at")
 }
 
 func TestEOALogin(t *testing.T) {

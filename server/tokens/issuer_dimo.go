@@ -3,7 +3,6 @@ package tokens
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -57,32 +56,25 @@ func signerAddress(connectorData []byte) string {
 	return common.HexToAddress(data.SignerAddress).Hex()
 }
 
-// clientTokenLifetime returns how long clientID's tokens stay valid: the global setting,
-// unless the client's IDTokenExpiry shortens it. The client is read from storage because
-// not every caller's Authorization holds the full client, and only static clients set this.
-func (i *Issuer) clientTokenLifetime(ctx context.Context, clientID string) (time.Duration, error) {
-	client, err := i.storage.GetClient(ctx, clientID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return i.idTokensValidFor, nil
-		}
-		return 0, err
-	}
-
+// clientTokenLifetime returns how long client's tokens stay valid: the global setting, unless
+// the client's IDTokenExpiry shortens it. It takes the client from the caller rather than
+// storage because a grant signs after spending its code or refresh token, so a failed read
+// here would lose them.
+func (i *Issuer) clientTokenLifetime(ctx context.Context, client storage.Client) time.Duration {
 	if client.IDTokenExpiry == "" {
-		return i.idTokensValidFor, nil
+		return i.idTokensValidFor
 	}
 	switch validFor, err := time.ParseDuration(client.IDTokenExpiry); {
 	case err != nil:
 		i.logger.ErrorContext(ctx, "client custom ID token expiry not a valid duration, this should never happen; using global",
-			"client_id", clientID, "id_expiry", client.IDTokenExpiry, "global_expiry", i.idTokensValidFor)
-		return i.idTokensValidFor, nil
+			"client_id", client.ID, "id_expiry", client.IDTokenExpiry, "global_expiry", i.idTokensValidFor)
+		return i.idTokensValidFor
 	case validFor > i.idTokensValidFor:
 		i.logger.ErrorContext(ctx, "client custom ID token expiry longer than the global setting; using the latter",
-			"client_id", clientID, "id_expiry", client.IDTokenExpiry, "global_expiry", i.idTokensValidFor)
-		return i.idTokensValidFor, nil
+			"client_id", client.ID, "id_expiry", client.IDTokenExpiry, "global_expiry", i.idTokensValidFor)
+		return i.idTokensValidFor
 	default:
-		return validFor, nil
+		return validFor
 	}
 }
 
